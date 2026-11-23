@@ -1,6 +1,8 @@
 name: ComfyLabo article
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       action:
@@ -23,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
+      # Enabled for the explicitly approved one-article preview only.
+      COMFYLABO_AUTO_DEPLOY: ${{ vars.COMFYLABO_AUTO_DEPLOY || 'true' }}
       NEXT_PUBLIC_SANITY_PROJECT_ID: '0lwnb6yi'
       NEXT_PUBLIC_SANITY_DATASET: production
       COMFYLABO_ARTICLE_SLUG: comfylabo-welcome
@@ -45,8 +49,8 @@ jobs:
         run: python3 scripts/site_bundle.py "$RELEASE" .mvp/bundle
       - name: Publish only the preview assets; never connect to SSH
         if: >-
-          github.ref == 'refs/heads/main' && vars.COMFYLABO_AUTO_DEPLOY == 'true' &&
-          (github.event_name == 'repository_dispatch' || inputs.action == 'publish-preview')
+          github.repository == 'ComfyLabo/comfylabo-next' && github.ref == 'refs/heads/main' && env.COMFYLABO_AUTO_DEPLOY == 'true' &&
+          (github.event_name == 'push' || github.event_name == 'repository_dispatch' || inputs.action == 'publish-preview')
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
