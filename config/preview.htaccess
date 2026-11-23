@@ -1,0 +1,13 @@
+# next.comfylabo.com専用。既存サイト直下の.htaccessは変更しない。
+Options -Indexes +SymLinksIfOwnerMatch
+DirectoryIndex disabled
+ErrorDocument 404 "Not Found"
+RewriteEngine On
+RewriteOptions IgnoreInherit
+RewriteCond %{HTTP_HOST} !^next\.comfylabo\.com(?::[0-9]+)?$ [NC]
+RewriteRule ^ - [R=404,END]
+# 無料SSLの発行・更新に必要な確認ファイルはそのまま配信する。
+RewriteRule ^\.well-known/acme-challenge/[A-Za-z0-9_-]+$ - [END]
+RewriteRule ^$ site/index.html [END]
+RewriteRule ^(styles\.css|comfylabo-logo\.jpg)$ site/$1 [END]
+RewriteRule ^ - [R=404,END]

@@ -1,0 +1,46 @@
+{
+  "name": "sanity-blog-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "site:build": "node scripts/site.mjs",
+    "site:verify": "node scripts/verify-site.mjs",
+    "mvp:articles": "node scripts/mvp-content.mjs list",
+    "mvp:snapshot": "node scripts/mvp-content.mjs snapshot",
+    "mvp:export": "node scripts/mvp-export.mjs",
+    "test:mvp": "node --test scripts/*.test.mjs",
+    "test:pull": "python3 -B -m unittest discover -s scripts -p '*_test.py'"
+  },
+  "dependencies": {
+    "@portabletext/react": "^6.0.0",
+    "@tailwindcss/typography": "^0.5.19",
+    "next": "15.5.28",
+    "next-sanity": "^11.6.12",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-icons": "^5.5.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "sanity": "^4.22.0"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.5.28",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "overrides": {
+    "next": {
+      "sharp": "0.35.5"
+    }
+  }
+}

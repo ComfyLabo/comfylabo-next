@@ -1,0 +1,63 @@
+name: ComfyLabo article
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        description: Build only or publish the approved preview bundle
+        options: [build, publish-preview]
+        default: build
+  repository_dispatch:
+    types: [sanity-publish]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: comfylabo-next
+  cancel-in-progress: false
+
+jobs:
+  article:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEXT_PUBLIC_SANITY_PROJECT_ID: '0lwnb6yi'
+      NEXT_PUBLIC_SANITY_DATASET: production
+      COMFYLABO_ARTICLE_SLUG: comfylabo-welcome
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run test:mvp
+      - run: npm run test:pull
+      - name: Build the approved preview article
+        id: build
+        run: npm run site:build
+      - name: Package verified static files only
+        env:
+          RELEASE: ${{ steps.build.outputs.release }}
+        run: python3 scripts/site_bundle.py "$RELEASE" .mvp/bundle
+      - name: Publish only the preview assets; never connect to SSH
+        if: >-
+          github.ref == 'refs/heads/main' && vars.COMFYLABO_AUTO_DEPLOY == 'true' &&
+          (github.event_name == 'repository_dispatch' || inputs.action == 'publish-preview')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view comfylabo-preview >/dev/null 2>&1; then
+            gh release create comfylabo-preview --target "$COMMIT" --prerelease --latest=false \
+              --title 'ComfyLabo preview article' --notes 'Static files for next.comfylabo.com only.'
+          fi
+          gh release upload comfylabo-preview .mvp/bundle/comfylabo-preview.zip --clobber
+          # Publish the digest last. An interrupted upload never switches Xserver.
+          gh release upload comfylabo-preview .mvp/bundle/comfylabo-preview.sha256 --clobber

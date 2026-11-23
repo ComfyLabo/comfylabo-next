@@ -1,0 +1,227 @@
+import { defineConfig, defineField, defineType } from "sanity";
+import { structureTool } from "sanity/structure";
+
+const projectId = process.env.NEXT_PUBLIC_SANITY_PROJECT_ID;
+const dataset = process.env.NEXT_PUBLIC_SANITY_DATASET;
+
+if (!projectId || !dataset) {
+  throw new Error("Missing Sanity Studio environment variables");
+}
+
+const createReadableSlug = (value: string) =>
+  value
+    .normalize("NFKC")
+    .replace(/(?<=\d),(?=\d)/g, "")
+    .replace(/[【】「」『』（）()［］[\]{}]/g, "")
+    .replace(/[&/_,.:;!?]+/g, " ")
+    .replace(/[ー―‐‑‒–—―]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}-]/gu, "")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase()
+    .slice(0, 96) || "post";
+
+const author = defineType({
+  name: "author",
+  title: "Author",
+  type: "document",
+  fields: [
+    defineField({
+      name: "name",
+      title: "Name",
+      type: "string",
+      validation: (rule) => rule.required(),
+    }),
+  ],
+  preview: {
+    select: {
+      title: "name",
+    },
+  },
+});
+
+const post = defineType({
+  name: "post",
+  title: "Post",
+  type: "document",
+  fields: [
+    defineField({
+      name: "title",
+      title: "Title",
+      type: "string",
+      validation: (rule) => rule.required(),
+    }),
+    defineField({
+      name: "seoDescription",
+      title: "検索・共有用の説明文",
+      type: "text",
+      rows: 3,
+      description: "記事の内容を短く説明します。検索結果の表示文は検索エンジンによって変わる場合があります。",
+      validation: (rule) => rule.max(160).warning("160文字以内を目安にしてください。"),
+    }),
+    defineField({
+      name: "slug",
+      title: "Slug",
+      type: "slug",
+      options: {
+        source: "title",
+        maxLength: 96,
+        slugify: createReadableSlug,
+      },
+      validation: (rule) => rule.required(),
+    }),
+    defineField({
+      name: "author",
+      title: "Author",
+      type: "reference",
+      to: [{ type: "author" }],
+    }),
+    defineField({
+      name: "publishedAt",
+      title: "Published at",
+      type: "datetime",
+    }),
+    defineField({
+      name: "mainImage",
+      title: "アイキャッチ画像",
+      type: "image",
+      options: { hotspot: true },
+      fields: [
+        defineField({ name: "alt", title: "画像の説明", type: "string" }),
+      ],
+    }),
+    defineField({
+      name: "articleImages",
+      title: "本文用の画像",
+      type: "array",
+      description: "ここに画像を保存し、画像のURLをMarkdown本文で使います。",
+      of: [
+        {
+          type: "image",
+          fields: [
+            defineField({ name: "alt", title: "画像の説明", type: "string" }),
+          ],
+        },
+      ],
+    }),
+    defineField({
+      name: "markdownBody",
+      title: "Body (Markdown)",
+      type: "text",
+      rows: 24,
+      description: "Obsidian などで書いた Markdown をそのまま貼り付ける本文欄",
+    }),
+    defineField({
+      name: "body",
+      title: "Body",
+      type: "array",
+      description: "旧本文。Markdown 本文がある場合はそちらが優先表示されます。",
+      of: [{ type: "block" }],
+    }),
+    defineField({
+      name: "legacyWordPressId",
+      title: "元WordPress記事ID",
+      type: "string",
+      description: "移行元の記事ID。slugやSanityの文書IDとは別に記録します。",
+      validation: (rule) =>
+        rule.regex(/^[0-9]+$/).error("WordPress記事IDを半角数字で入力してください。"),
+    }),
+    defineField({
+      name: "legacyUrls",
+      title: "元WordPress URL",
+      type: "array",
+      description: "確認できた旧URLを記録します。複数形式を保持でき、転送設定には使用しません。",
+      of: [
+        {
+          type: "url",
+          validation: (rule) => rule.uri({ scheme: ["http", "https"] }),
+        },
+      ],
+      validation: (rule) => rule.unique(),
+    }),
+    defineField({
+      name: "migrationNotes",
+      title: "移行作業メモ（本文・SEOには使用しません）",
+      type: "text",
+      rows: 6,
+      description: "未確認事項や内部リンク案を記録します。非公開を保証する欄ではありません。秘密情報は入力しないでください。",
+    }),
+  ],
+  preview: {
+    select: {
+      title: "title",
+      subtitle: "author.name",
+    },
+  },
+});
+
+const about = defineType({
+  name: "about",
+  title: "About",
+  type: "document",
+  fields: [
+    defineField({
+      name: "title",
+      title: "Title",
+      type: "string",
+      initialValue: "About ComfyLabo",
+      validation: (rule) => rule.required(),
+    }),
+    defineField({
+      name: "body",
+      title: "Body",
+      type: "array",
+      of: [{ type: "block" }],
+    }),
+    defineField({
+      name: "socialLinks",
+      title: "Social links",
+      type: "array",
+      of: [
+        defineField({
+          name: "socialLink",
+          title: "Social link",
+          type: "object",
+          fields: [
+            defineField({
+              name: "name",
+              title: "Name",
+              type: "string",
+              validation: (rule) => rule.required(),
+            }),
+            defineField({
+              name: "href",
+              title: "URL",
+              type: "url",
+              validation: (rule) => rule.required(),
+            }),
+          ],
+          preview: {
+            select: {
+              title: "name",
+              subtitle: "href",
+            },
+          },
+        }),
+      ],
+    }),
+  ],
+  preview: {
+    select: {
+      title: "title",
+    },
+  },
+});
+
+export default defineConfig({
+  name: "default",
+  title: "ComfyLabo Blog Studio",
+  projectId,
+  dataset,
+  basePath: "/studio",
+  plugins: [structureTool()],
+  schema: {
+    types: [post, author, about],
+  },
+});
