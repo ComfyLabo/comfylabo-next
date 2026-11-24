@@ -21,8 +21,9 @@ test("記事・CSS・ロゴを生成し、失敗時と再生成時に以前の�
     assert.ok(html.includes("&lt;script&gt;"));
     assert.ok(!html.includes("<script"));
     assert.ok(!html.includes("/_next/"));
-    assert.ok(html.includes('href="./styles.css"'));
     const manifest = JSON.parse(await readFile(path.join(first, "manifest.json"), "utf8"));
+    // CSS更新時は読み込みURLも変え、ブラウザーに古いデザインを残さない。
+    assert.ok(html.includes(`href="./styles.css?v=${manifest.files["styles.css"].slice(0, 12)}"`));
     for (const [name, hash] of Object.entries(manifest.files)) {
       assert.equal(createHash("sha256").update(await readFile(path.join(first, name))).digest("hex"), hash);
     }

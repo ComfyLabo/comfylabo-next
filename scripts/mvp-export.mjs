@@ -11,8 +11,9 @@ import { PortableText } from "@portabletext/react";
 import { readSnapshot, validatePost } from "../lib/mvp-snapshot.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const hash = (value) => createHash("sha256").update(value).digest("hex");
 
-function renderArticle(post, preview) {
+function renderArticle(post, preview, styleVersion) {
   const PostBody = ({ body }) => h("div", { className: "article-body" },
     typeof body === "string"
       ? h(ReactMarkdown, { remarkPlugins: [remarkGfm], children: body })
@@ -24,7 +25,7 @@ function renderArticle(post, preview) {
         h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
         preview ? h("meta", { name: "robots", content: "noindex, nofollow" }) : null,
         h("title", null, `${post.title} | ComfyLabo`),
-        h("link", { rel: "stylesheet", href: "./styles.css" }),
+        h("link", { rel: "stylesheet", href: `./styles.css?v=${styleVersion}` }),
       ),
       h("body", null, h("main", null,
         preview ? h("p", { className: "preview-note" }, "新システムの表示確認用") : null,
@@ -55,7 +56,8 @@ export async function buildPostRelease(post, {
   preview = true,
 } = {}) {
   validatePost(post);
-  const html = renderArticle(post, preview);
+  const styles = await readFile(path.join(root, "app/mvp/export.css"));
+  const html = renderArticle(post, preview, hash(styles).slice(0, 12));
   // 未収集の相対画像を含む、不完全な成果物は作らない。
   for (const [, src] of html.matchAll(/<img\b[^>]*\bsrc="([^"]*)"/g)) {
     if (src !== "./comfylabo-logo.jpg" && !/^https?:\/\//.test(src)) {
@@ -64,7 +66,7 @@ export async function buildPostRelease(post, {
   }
   const files = {
     "index.html": Buffer.from(html),
-    "styles.css": await readFile(path.join(root, "app/mvp/export.css")),
+    "styles.css": styles,
     "comfylabo-logo.jpg": await readFile(logoPath),
   };
   if (Object.values(files).some((value) => value.length === 0)) throw new Error("成果物が空です。");
@@ -74,7 +76,6 @@ export async function buildPostRelease(post, {
     const manifest = { version: 1, postId: post._id, revision: post._rev, slug: post.slug, files: {} };
     for (const [name, content] of Object.entries(files)) {
       await writeFile(path.join(staging, name), content, { flag: "wx" });
-      const hash = (value) => createHash("sha256").update(value).digest("hex");
       if (hash(await readFile(path.join(staging, name))) !== hash(content)) throw new Error("成果物の検証に失敗しました。");
       manifest.files[name] = hash(content);
     }
