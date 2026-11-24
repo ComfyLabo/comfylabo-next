@@ -31,24 +31,30 @@
 
 ## 現在の構成と確認方法
 
-- Next.js App Router / React / TypeScript / Tailwind CSS。`app/(site)` に一覧・記事詳細・About、`app/studio` に Sanity Studio がある。
-- `sanity.config.ts` に post / author / about のスキーマ、`lib/sanity.ts` に取得用クライアント、`components/post-body.tsx` に Markdown / Portable Text の表示処理がある。
-- 現行クライアントは開発時に読み取りトークンがあると下書きを参照し、それ以外は公開済み記事を参照する。確認先を意識して作業する。
-- `middleware.ts` の Studio 認証を弱めない。本番では認証用環境変数が未設定の場合に 503 を返す。
-- `npm run dev` で開発、`npm run lint` と `npx --no-install tsc --noEmit` で基本確認。変更に応じてビルド・画面確認を行い、未実行の確認を成功と報告しない。
-- `/mvp` は開発時限定の記事表示。未設定時はサンプル、`MVP_SNAPSHOT` にファイル名を指定すると `.mvp/snapshots/` の保存済み記事を表示する。指定ファイルの異常をサンプルで隠さない。Sanity 接続や Publish は行わず、本番では読み込み前に 404 を返す。
-- `npm run mvp:articles` で公開済み記事を匿名読み取りし、`npm run mvp:snapshot -- '<slug>'` で1本のデータを `.mvp/snapshots/` に新規保存する。`npm run test:mvp` で空本文・下書き拒否と既存版保持を確認する。この保存処理は本番配備ではない。
-- 通常の経路は `npm run site:build -- '<slug>'` で公開済み記事1本を取得して静的生成する。保存データの手渡しは不要。`--sample` ならSanityに接続せず確認できる。生成先は `.mvp/releases/`。本文はMarkdown / Portable Textの標準表示を使い、実行時のTSX変換や短文を表と推測する処理を増やさない。
-- 自動化の入口は `.github/workflows/site.yml`。Sanity→GitHub repository_dispatch→記事1本の生成・照合→専用Release→XserverのCronによるHTTPS取得・照合→リンク切り替え、という小さな流れにする。新たな中継サーバーや承認票システムを作らない。
-- `scripts/xserver.mjs` と `scripts/xserver-release.sh` は専用の `/home/<サーバーID>/comfylabo-next` 内だけを操作する。`current` / `previous` で使用版と直前版を管理する。既存本番の公開入口は自動変更しない。
-- 手動SSH配備は `COMFYLABO_DEPLOY_ENABLED`、自動配備はGitHub VariableとXserver Cronの `COMFYLABO_AUTO_DEPLOY` の有効化が必要。いずれも初期無効。有効化やWebhook登録前に、対象・接続先・自動運用の承認範囲・費用を明確にして事前承認を得る。今回のローカル実装はその承認ではない。
-- 生成・切り替え・復旧処理は隔離したローカル環境で試験済み。実Xserverへの読み取り専用SSH接続は2026-11-23に成功。ホスト鍵はユーザー承認済みのプロジェクト専用ファイルを使う。専用保存先の作成・テスト記事1本の転送・照合・current設定もユーザー承認後に成功。別接続で3ファイルのハッシュ一致を確認済み。新サブドメインの公開入口設定と、HTTPSでの3ファイル一致・内部パス拒否・ブラウザ表示も確認済み。実サーバー上の2版間復旧試験、Actions実行、Webhook連携は未実施。詳細は `README.md` を参照する。
-- 上記の未実装はこのリポジトリについての記述。既存公開サイトの記事にはSanity→静的生成→XserverとMacアプリ「ComfyLabo Publisher」の運用記録がある。既存側の構成を新規実装の欠落と混同せず、ソース所在と接続先の境界を読み取りで確認する。`BlogAutoPost` はWordPress用の関連プロジェクトであり、現行Publisherとは断定しない。
-- ユーザーは厳密な現行Mac Publisherより、旧 `ComfyLabo/BlogAutoPost` を参考にしたシンプルな新システムを希望している。現行Publisherのソース取得や承認方式の再実装をMVPの必須条件にしない。旧BlogAutoPostの確認済みmainはClaude→WordPress構成のため、Sanity連携コードと推測して流用しない。
-- 確認用記事1本を `https://next.comfylabo.com/` に公開することはユーザー承認済み。サブドメイン追加と新しい子フォルダーの公開設定は実施済みで、反映・SSL・公開ファイルの一致・ブラウザ表示を確認済み。これは既存本番やSanityのPublish、自動配備の包括承認ではない。`npm run site:verify -- <HTTPSトップURL> <成果物フォルダー>` で実配信まで検証する。
+- 専用リポジトリは https://github.com/ComfyLabo/comfylabo-next 、確認先は https://next.comfylabo.com/ 。旧 sanity-blog-frontend はVercelに接続されているためpushしない。リモート名だけで判断せずURLを確認する。
+- Next.js App Router / React / TypeScript / Tailwind CSSとSanity Studioを残す。Studio認証を弱めない。本番で認証用環境変数が未設定なら503にする。
+- Next.jsの取得クライアントは開発時にトークンがあると下書きを参照する。自動生成の `scripts/mvp-content.mjs` は公開記事だけを匿名取得する。
+- `npm run dev` で開発。基本確認は `npm run lint` と `npx --no-install tsc --noEmit`。変更に応じて `npm run test:mvp` / `npm run test:pull`・ビルド・画面確認を行い、未実行の確認を成功と報告しない。
+- `/mvp` は開発時限定。本番では読み込み前に404。未指定ならサンプル、MVP_SNAPSHOT指定なら保存データを表示し、不正なデータを代替記事で隠さない。
+- `npm run site:build -- comfylabo-welcome` が通常の取得・生成経路。`--sample` はSanityに接続しない。生成先は `.mvp/releases/`。旧snapshot経路は補助として残す。
+- 本文は標準Markdown / Portable Text表示。未対応ブロックや未配置の相対画像は、欠落させて公開せず停止する。画像収集や複雑な旧記事の再現は後回しにする。
 
-- MVP記事「ComfyLaboへようこそ」（公開ID `comfylabo-mvp-welcome`、slug `comfylabo-welcome`）は、個別承認を受けてSanityに公開版を作成し、匿名取得→生成→確認用サイトへの反映→HTTPS照合まで成功。下書きは変更・削除せず保持している。今回の承認を別記事や自動公開全体へ広げない。
+## 承認済みの自動反映範囲
 
-- 自動配備は国外SSH制限と暗号化された既存鍵を維持するため、Xserverから公開GitHub ReleaseをHTTPS取得する方式とする。`scripts/site_bundle.py` / `scripts/xserver_pull.py` はXserverのPython 3.6対応・標準ライブラリのみ。対象は公開ID `comfylabo-mvp-welcome` / slug `comfylabo-welcome` / `next.comfylabo.com` に固定する。GitHubへSSH鍵を預けない。`npm run test:pull` で失敗時維持・復旧・同じ版の再適用防止・多重起動を検証する。GitHub反映・Release公開・Cron設置・Webhook登録は未実施で、継続的な自動反映の承認が必要。
+- 記事は「ComfyLaboへようこそ」、公開ID `comfylabo-mvp-welcome`、slug `comfylabo-welcome`、Sanity `0lwnb6yi / production` の1本だけ。確認用URLと検索除外を維持する。別記事・既存本番への拡大は未承認。
+- 有効なSanity Webhook `ComfyLabo next preview` がcreate/updateをGitHub repository_dispatchへ通知する。下書き・バージョン・deleteは対象外。
+- 専用リポジトリのmainへのpushも同じ記事を再生成する。他のリポジトリ・ブランチからはReleaseを公開しない。
+- GitHubは匿名取得→検証→専用 `comfylabo-preview` prereleaseへZIPとSHA-256を保存する。Xserverが2分ごとのCronでHTTPS取得・照合してcurrentを切り替える。GitHubへSSH鍵を預けず、国外SSH制限を解除しない。
+- Pythonは標準ライブラリだけでXserverの3.6に対応。専用保存先 `/home/<サーバーID>/comfylabo-next` に限定し、管理マーカーとcurrent / previousを使う。既存本番の入口は自動変更しない。
+- 自動反映はこの1記事・確認用URLに限って承認済み。GitHub Variable COMFYLABO_AUTO_DEPLOYは未設定時にtrueで、falseならRelease更新を停止する。Cronも限定承認後に有効化済み。手動SSH反映用COMFYLABO_DEPLOY_ENABLEDは初期false。
+- 停止・手動復旧・手動反映の前に専用Cronを止め、既存の別ジョブを保持する。復旧後に同じ版を定期処理が勝手に再適用しないことを確認済み。
+- トークンはユーザーがGitHubで作成しSanityへ直接入力した。値をチャット・ログ・Gitに残さない。有効期限前の更新はユーザー操作が必要。SSH鍵もパスフレーズを保存せず、ユーザーのエージェントへ一時的に読み込む。
 
-2026-11-24：ユーザーは記事1本・確認用URLに限定したGitHub反映、Release公開、Webhook設定、Xserver定期取得の有効化を承認した。実装を隔離した `.mvp/github-preview` で最新GitHub main（4655467）へ統合し、既存のNext 15.5.28・lockfile・画面修正を保持した状態でテスト15件、Lint、型検査に成功。公開記事の匿名取得と生成にも成功した。Xserverの鍵をユーザーが再読み込みし、現行版・既存Cron・既存本番 .htaccess のハッシュを読み取り確認した。既存GitHub mainにはVercel本番への自動配備接続があるため、GitHubへの書き込みは実行していない。専用の公開リポジトリ ComfyLabo/comfylabo-next の作成と、そこへの反映はユーザー承認済み。既存リポジトリへはpushしない。既存Cronには非UTF-8のコメントがあるため、追加時は元のバイト列をバックアップ・保持し、専用ジョブだけを追記する。
+## 確認済みの状態（2026-11-24）
+
+- 個別の明示承認後、公開日時だけを更新し、Sanity実通知のHTTP204→GitHub Actionsのテスト15件・生成・Release更新→Xserverの定期取得・切り替え→HTTPS照合がすべて成功した。実行記録は https://github.com/ComfyLabo/comfylabo-next/actions/runs/45399857651 。
+- 本文・タイトル・slug・下書きは維持した。通常のStudio Publishに含まれる下書き削除は行っていない。この承認を今後のPublishや削除へ広げない。SSH鍵の再読み込み結果だけをPublishの明示承認と解釈しない。
+- currentは `releases/github-034cb42a405e9fcf4fc9d314d28d6dd6c4735a6d4f328def6a20291b9103eadf`、記事revisionは `UxqoYU4fBqLx1dyhI3bwLi`。previousに直前の正常版を保持する。
+- 既存本番設定のハッシュ不変、既存Cronのバイト列保持、実サーバーでの復旧試験、公開3ファイルの一致と内部パスの404を確認済み。
+- `content/*.draft.json` は公開ソースから除外した。ローカル一時cloneのコミットe9fdb94には下書きが含まれるためpush禁止。原稿・生成物・証跡はGit対象外の `.mvp/` などへ保存する。
+- 旧BlogAutoPostは確認済みmainがClaude→WordPress構成。現行Mac Publisherと断定せず、その厳密な承認機構を新システムに再実装しない。
