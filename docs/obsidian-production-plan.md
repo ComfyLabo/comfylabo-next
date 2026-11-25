@@ -104,7 +104,7 @@ COMFYLABO_PRODUCTION_APPROVED=obsidian-4484 npm run article:production:rollback 
 
 ## 自動公開の本番対応
 
-2026-11-25、その後の明示承認を得て、本記事1本に限る本番自動反映を有効化した。現在の内容と同じ初期ZIPをGitHubで生成し、Xserver専用Cronによる初回の自然受信、現在版の維持、実サイト照合まで確認済み。詳細は `production-autopublish.md`。内容を変えるSanity Publishから切り替えまでの通しテストは、変更内容の個別承認後に行う。別記事への本番自動反映は対象外。
+2026-11-25、その後の明示承認を得て、本記事1本に限る本番自動反映を有効化した。現在の内容と同じ初期ZIPをGitHubで生成し、Xserver専用Cronによる初回の自然受信、現在版の維持、実サイト照合まで確認済み。詳細は `production-autopublish.md`。その後、個別承認を得て同一内容を再Publishし、新しい版が自然実行Cronで本番へ切り替わる通し確認も成功した。本文を編集するテストは行っていない。別記事への本番自動反映は対象外。
 
 Search Consoleのnext登録は本番への切り替えとは別。確認用サイトの検索除外解除や、本番記事へのインデックス登録リクエストは、この準備作業では行わない。
 

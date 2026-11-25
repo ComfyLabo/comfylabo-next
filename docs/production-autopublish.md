@@ -69,7 +69,7 @@ COMFYLABO_PRODUCTION_APPROVED=obsidian-4484 /usr/bin/python3 -B \
 - 別記事／preview形式／壊れたZIP／余分な制御ファイル／パストラバーサル／重複名／シンボリックリンクを拒否。設定の競合・容量超過・状態保存失敗でも正常版を維持。同時実行をロックで抑止し、ログ保持数と容量も確認。
 - 実際の本番設定と実記事を使ったローカルApacheで、2回の自動更新、追加素材の200と次版での404、全ファイルのHTTPS照合、トップ／別記事の維持、手動復旧、公開後の検証失敗時復旧、同じ版の再適用防止を確認。証跡 `.mvp/evidence/production-auto-apache-check.json`。信頼する試験用証明書を使い、証明書検証は無効にしていない。
 - 初回実記事のパッケージから、公開ファイルだけのZIPを作成・再展開し検証。`.mvp/production-auto-bundle-check/` に保存、未公開。
-- 本番でのGitHub→受信処理の初回実行も、下記の通り確認した。内容を変えるSanity Publishと本番切り替えの通し確認はまだ実施していないため、別途その変更内容の承認を得て行う。
+- 本番でのGitHub→受信処理の初回実行も、下記の通り確認した。その後、下記の通り同一内容の再Publishから新しい版への本番切り替えまで確認済み。本文の編集を伴うテストは行っていない。
 
 ## 有効化の実績（2026-11-25）
 
@@ -81,3 +81,14 @@ COMFYLABO_PRODUCTION_APPROVED=obsidian-4484 /usr/bin/python3 -B \
 - 手動で受信処理を起動せず、Cronの自然実行によって上記ZIPの処理記録が生成されたことを確認。現在版は初回配備のまま、直前の自動配備版はまだない。エラーログなし。専用領域の使用量1,862,052バイト（この確認時点）。
 - 公開5ファイルのHTTPSハッシュ、トップと `/1125/` の配備前HTMLハッシュ、301転送と内部パス404が正常。親設定SHA-256は初回配備後の `0a6d2b2ad11bb417cd1080083ab8f6b952727ea31132f99686ac01f82350601c` を維持。
 - 証跡はGit対象外 `.mvp/evidence/production-auto-installed.json`、`production-auto-after.json`、`production-auto-release.json`、`production-http-after.json`。GitHub成功画面は `production-auto-github-success.jpg`。
+
+## Publishから本番切り替えまでの通し確認（2026-11-25）
+
+- ユーザーから「同じ内容で再PublishしてOK」の個別承認を得て1回だけ実行。実行直前に編集中の下書きがないことと公開済み版を照合した。同じ内容の下書きからSanity標準のpublish actionを使い、下書きと公開版の両revisionガードを付けた。
+- 記事本文・タイトル・slug・公開日時・画像・著者・検索用説明文・作成日時を含む全記事項目は維持。Sanityのrevisionと内部更新時刻だけが変わった。公開日時 `2026-03-20T01:08:00.000Z`、作成日時 `2026-11-25T04:57:26Z` を維持し、下書きは通常Publishにより統合済み。
+- 公開revisionは `R6mHs9X5xGv3zgDVm42s2K`。Sanityからの実通知で起動した本番Actions `45620834487`、preview Actions `45620834658` が両方成功した。手動workflow起動で代替していない。
+- Xserverの自然実行CronがZIP `8fe59f55855a4ca06ca6aed208747d6e2437908f6d125aa4afe7f0350e31c938` を受信。currentは `f8c7adf4cdcf1b407ac593d2e15429615501f8bfa290ed0d8c9329b08a4a4ee2`、previousは初回版 `bc9be8f7a04aa98fca7403483d4b2645c02e108d09f0ccaf4e3a0f5a9f3863c1`。公開ファイル自体は同じ内容のまま、新しい版へ切り替わった。
+- 現在の親設定SHA-256は `1fee24d4e5f11db606e7c69abacf249e8aaa1109f4c41afb9792d9cde4ce70d5`。対象以外の元ルールを維持し、直前版の全公開ファイルも保持。エラーログなし、専用領域2,858,123バイト（確認時点）。
+- 本番5ファイル・preview7ファイルをHTTPSで全件照合。previewのnoindex、トップ／1125記事のHTMLハッシュ、301転送と内部パス404も維持していた。
+- 証跡は `.mvp/evidence/production-update-check-proposal.json`、production-update-check-published.json、production-update-e2e.json、production-update-release-check.json、production-update-http-check.json。記事の原文バックアップはローカル0600で保持し、Gitには含めていない。
+- 初回専用postflightやinstallerは古い初期版のハッシュを前提とするため、現在の確認に再使用しない。現在版は `automatic-state.json` から読み取り、保存済みplanと照合する。新規記事への本番対応は `new-article-production-plan.md` の別作業。
