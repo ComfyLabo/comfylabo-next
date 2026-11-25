@@ -8,12 +8,15 @@
     "start": "next start",
     "lint": "eslint",
     "site:build": "node scripts/site.mjs",
+    "blog:build": "node scripts/blog.mjs",
+    "blog:preview": "node scripts/blog-preview.mjs",
     "site:verify": "node scripts/verify-site.mjs",
     "mvp:articles": "node scripts/mvp-content.mjs list",
     "mvp:snapshot": "node scripts/mvp-content.mjs snapshot",
     "mvp:export": "node scripts/mvp-export.mjs",
     "test:mvp": "node --test scripts/*.test.mjs",
-    "test:pull": "python3 -B -m unittest discover -s scripts -p '*_test.py'"
+    "test:pull": "python3 -B -m unittest discover -s scripts -p '*_test.py'",
+    "studio:dev": "next dev --hostname 127.0.0.1 --port 3333"
   },
   "dependencies": {
     "@portabletext/react": "^6.0.0",

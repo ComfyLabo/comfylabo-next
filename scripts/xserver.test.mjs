@@ -63,7 +63,12 @@ test("初期状態では接続せず、有効時も不正な保存先や壊れ�
 test("転送に失敗した場合は公開先の切り替えを実行しない", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "comfylabo-upload-"));
   try {
-    const release = await buildPostRelease(post, { releaseDirectory: directory });
+    const release = await buildPostRelease({ ...post, body: "![画像](https://cdn.sanity.io/images/test/production/abc-1x1.png)" }, {
+      releaseDirectory: directory,
+      imageOptions: { projectId: "test", dataset: "production", fetcher: async () =>
+        new Response(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), { headers: { "content-type": "image/png" } }),
+      },
+    });
     const key = path.join(directory, "test-key");
     await writeFile(key, "test-only placeholder", { mode: 0o600 });
     const hosts = path.join(directory, "test-hosts");
@@ -79,6 +84,7 @@ test("転送に失敗した場合は公開先の切り替えを実行しない",
     }));
     assert.deepEqual(commands.map(([command]) => command), ["ssh", "scp"]);
     assert.ok(commands[0][1].at(-1).includes("'prepare'"));
+    assert.ok(commands[1][1].some((arg) => /image-[a-f0-9]{64}\.png$/.test(arg)));
     assert.ok(commands.every(([, args]) => args.includes(key)));
     assert.ok(commands.every(([, args]) => args.includes(`UserKnownHostsFile=${hosts}`)));
   } finally {

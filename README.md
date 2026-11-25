@@ -57,7 +57,25 @@ npm run site:build -- comfylabo-welcome
 npm run site:verify -- https://next.comfylabo.com/ '.mvp/releases/<版>'
 ```
 
+記事の表示は白い背景と読みやすい本文幅を基本に、スマホ17px・PC18pxで調整しています。
+CSSの読み込みURLには内容ハッシュを付け、更新後に古いデザインが残ることを防ぎます。
+
 生成先は `.mvp/releases/`。`index.html`、`styles.css`、`comfylabo-logo.jpg` と照合情報を含みます。
+本文画像は同じSanityプロジェクト・データセットのJPEG/PNG/WebP元画像URLだけを取得し、
+`image-<SHA-256>.<拡張子>` として同梱します。画像への原寸リンクも同梱先へ置き換えます。
+画像は最大10枚、1枚5MiB、画像合計8MiB、成果物全体10MiB以内です。
+取得失敗・形式不一致・容量超過では生成を止め、以前の正常版を変更しません。
+画像もZIP・切り替え時・HTTPS配信後のハッシュ照合に含めます。
+
+この画像対応はローカル実装済みで、Xserverには未反映です。
+配備前に専用Cronを停止し、`site_bundle.py` / `xserver_pull.py` と確認用サブドメインだけの
+`config/preview.htaccess` を承認後に更新・検証してから再開します。
+サーバー上の旧版は本文画像を含むZIPを拒否するため、先に画像付きReleaseだけを公開しないでください。
+記事範囲は引き続き「ComfyLaboへようこそ」1本です。Obsidian記事への切り替えは未承認で、
+Mac Publisherの読み取り調査は完了しており、確認した経路ではSanity Publishだけで旧本番を自動更新しません。
+Obsidian記事のPublishは、具体的な公開対象の承認を済ませてから行います。
+確認済みの影響範囲、残る確認事項、反映と復旧の順序は
+[Obsidian記事の確認用反映計画](docs/obsidian-preview-plan.md) にまとめています。
 環境設定は `.env.example` を参考に、Git対象外の `.env.local` へ置きます。
 鍵本体・パスフレーズ・GitHubトークンはこのファイルへ記録しません。
 下書き原稿 `.draft.json` と生成物・証跡は公開ソースに含めません。
@@ -66,14 +84,62 @@ Next.jsの既存画面とStudioは開発用として残しています。
 `npm run dev` で起動でき、`/mvp` は開発時だけ表示し、本番では404です。
 Studioの認証は弱めていません。
 
+## 記事一覧と個別ページ（ローカル実装）
+
+Sanityに追加・公開された記事を一度の匿名クエリで取得し、トップの一覧と
+`/posts/<slug>/` の個別ページをまとめて生成できます。
+一覧は公開日時の新しい順で、各記事から一覧へ戻れます。既存ロゴ・本文表示・画像同梱を再利用します。
+
+```bash
+# 公開済みの実記事だけを取得（Sanityへの書き込みなし）
+npm run blog:build
+# Sanityに接続せず、明示したサンプル2件で記事追加後の構成を確認
+npm run blog:build -- --sample
+# 上のコマンドが表示する生成先を指定
+npm run blog:preview -- .mvp/blog-releases/<版>
+```
+
+確認先は http://127.0.0.1:4175/ です。ループバックだけで待ち受け、検証済みのHTML・素材だけを配信します。
+認証情報・manifest・チェックサム一覧は配信しません。サンプル記事はSanityへ登録されません。
+下書き・バージョン・空本文・重複ID/slug・危険なパス・不正な日付を拒否し、1件でも失敗したら以前の生成版を保持します。
+現段階は100記事・成果物全体10MiBまでで、上限超過を黙って切り捨てず停止します。
+
+この複数記事版は `.mvp/blog-releases/` に分け、形式をversion 2にしています。
+既存の1記事用ZIP・転送処理はこの形式を拒否します。現在のWebhook・GitHub・Xserverの
+自動反映対象は引き続き「ようこそ」1本です。複数記事のZIP・受信・配信照合とGitHubのモード切り替えは
+ローカル実装済みで、配備・運用範囲の拡大は未承認です。`COMFYLABO_PREVIEW_MODE` は未指定ならsingleで、
+明示的にblogへ変更するまで一覧版を受け付けません。サンプルはblogモードでも配備対象として拒否します。
+Sanityの公開済み実記事は確認時点で1件。サンプル2件の画面はユーザーが確認済みです。
+現在の4175は実際の公開済み1件の配備候補を表示しています。
+[一覧版の配備範囲・切り替えと復旧](docs/blog-preview-deployment.md) を確認し、承認後に外部へ反映します。
+
+## 新システムの記事入力画面
+
+`npm run studio:dev` で起動し、http://localhost:3333/studio を開きます。
+Sanityで既に許可されているlocalhost:3333を使い、既存の認証を維持します。
+Basic認証には `.env.local` のSTUDIO_USERNAME / STUDIO_PASSWORDを使用し、続いて必要に応じてSanityへログインします。値をチャットへ送らないでください。
+
+「確認用の記事（MVP）」から対象記事を直接開けます。通常の入力はタイトル・URL識別名・Markdown本文・公開日時の順です。
+画像・検索・著者と旧記事・移行情報は折りたたみ、既存データの保存名・型・検証条件は維持しています。
+この入力画面の変更はローカル用です。旧VercelのStudioには配備していません。
+
+## この作業フォルダーのGit接続
+
+開発ブランチは `codex/comfylabo-next-dev`、originは専用の `ComfyLabo/comfylabo-next` です。
+旧リポジトリはlegacyとして保持し、ローカルからのpushを無効化しました。旧ブランチlegacy-mainも保持しています。
+切り替え前の変更はGit stashと `.mvp/latest-workspace-backup.txt` が指すバックアップに保存済みです。
+環境設定や下書きなどのGit対象外ファイルは移動していません。`.mvp` はTypeScriptの検査対象からも除外します。
+
 ## ファイルの役割
 
 | ファイル | 役割 |
 | --- | --- |
 | `scripts/site.mjs` | 公開記事1本の取得と静的生成の入口 |
 | `scripts/mvp-content.mjs` | 匿名での公開記事取得 |
-| `scripts/mvp-export.mjs` | HTML・CSS・ロゴの生成とハッシュ検証 |
-| `scripts/site_bundle.py` | 検証済み5ファイルだけを再現可能なZIPにする |
+| `scripts/mvp-export.mjs` | HTML・CSS・ロゴ・本文画像の生成とハッシュ検証 |
+| `scripts/article-images.mjs` | Sanity画像の制限付き取得と同梱先への置換 |
+| `lib/site-files.mjs` | 公開ファイル名とハッシュ一覧の検証 |
+| `scripts/site_bundle.py` | 基本5ファイルと検証済み本文画像を再現可能なZIPにする |
 | `scripts/xserver_pull.py` | 定期取得・記事範囲の確認・切り替え・配信異常時の復旧 |
 | `scripts/xserver-release.sh` | 検証済みの版の切り替えと復旧 |
 | `scripts/verify-site.mjs` | HTTPSの内容一致・内部パス拒否の検証 |

@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { saveSnapshot } from "../lib/mvp-snapshot.mjs";
-import { buildRelease } from "./mvp-export.mjs";
+import { buildRelease, buildPostRelease } from "./mvp-export.mjs";
 
 test("記事・CSS・ロゴを生成し、失敗時と再生成時に以前の正常版を維持する", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "comfylabo-export-"));
@@ -35,6 +35,32 @@ test("記事・CSS・ロゴを生成し、失敗時と再生成時に以前の�
     const second = await buildRelease(snapshot, options);
     assert.notEqual(first, second);
     assert.equal(await readFile(path.join(first, "index.html"), "utf8"), html);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("画像を含む版を照合対象へ追加し、画像失敗・下書きでは正常版を保持する", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "comfylabo-images-"));
+  const source = "https://cdn.sanity.io/images/test123/production/abcdef-1x1.png";
+  const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const post = { _id: "published-test", _rev: "1", title: "画像あり", slug: "test", body: `![説明](${source})` };
+  const options = { releaseDirectory: directory, imageOptions: {
+    projectId: "test123", dataset: "production",
+    fetcher: async () => new Response(bytes, { headers: { "content-type": "image/png" } }),
+  } };
+  try {
+    const release = await buildPostRelease(post, options);
+    const manifest = JSON.parse(await readFile(path.join(release, "manifest.json"), "utf8"));
+    const name = Object.keys(manifest.files).find((name) => name.startsWith("image-"));
+    assert.equal(manifest.files[name], createHash("sha256").update(bytes).digest("hex"));
+    assert.ok((await readFile(path.join(release, "index.html"), "utf8")).includes(`src="./${name}"`));
+    await assert.rejects(buildPostRelease(post, { ...options, imageOptions: { ...options.imageOptions,
+      fetcher: async () => new Response("missing", { status: 404 }),
+    } }));
+    await assert.rejects(buildPostRelease({ ...post, _id: "drafts.test" }, options));
+    assert.deepEqual(await readdir(directory), [path.basename(release)]);
+    assert.deepEqual(await readFile(path.join(release, name)), bytes);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

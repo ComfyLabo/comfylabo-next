@@ -43,27 +43,25 @@ const author = defineType({
 
 const post = defineType({
   name: "post",
-  title: "Post",
+  title: "記事",
+  fieldsets: [
+    { name: "optional", title: "画像・検索・著者（任意）", options: { collapsible: true, collapsed: true } },
+    { name: "legacy", title: "旧記事・移行情報（必要なときだけ）", options: { collapsible: true, collapsed: true } },
+  ],
   type: "document",
   fields: [
     defineField({
       name: "title",
-      title: "Title",
+      title: "タイトル",
       type: "string",
+      description: "記事の見出しです。自動反映は現在、確認用の記事1本だけが対象です。",
       validation: (rule) => rule.required(),
     }),
     defineField({
-      name: "seoDescription",
-      title: "検索・共有用の説明文",
-      type: "text",
-      rows: 3,
-      description: "記事の内容を短く説明します。検索結果の表示文は検索エンジンによって変わる場合があります。",
-      validation: (rule) => rule.max(160).warning("160文字以内を目安にしてください。"),
-    }),
-    defineField({
       name: "slug",
-      title: "Slug",
+      title: "URL識別名（slug）",
       type: "slug",
+      description: "確認用の記事では comfylabo-welcome のまま使ってください。変更すると自動反映の対象外になります。",
       options: {
         source: "title",
         maxLength: 96,
@@ -72,20 +70,41 @@ const post = defineType({
       validation: (rule) => rule.required(),
     }),
     defineField({
-      name: "author",
-      title: "Author",
-      type: "reference",
-      to: [{ type: "author" }],
+      name: "markdownBody",
+      title: "本文（Markdown）",
+      type: "text",
+      rows: 24,
+      description: "新システムで優先して使う本文です。Obsidianなどで書いたMarkdownをそのまま貼り付けられます。",
     }),
     defineField({
       name: "publishedAt",
-      title: "Published at",
+      title: "公開日時（任意）",
       type: "datetime",
+      description: "公開日時の記録です。日時を入力するだけで公開予約されることはありません。",
+    }),
+    defineField({
+      name: "seoDescription",
+      fieldset: "optional",
+      title: "検索・共有用の説明文",
+      type: "text",
+      rows: 3,
+      description: "検索や共有に使う説明文です。MVPの確認用ページにはまだ反映しません。",
+      validation: (rule) => rule.max(160).warning("160文字以内を目安にしてください。"),
+    }),
+    defineField({
+      name: "author",
+      fieldset: "optional",
+      title: "著者",
+      type: "reference",
+      description: "MVPの確認用ページでは表示しません。",
+      to: [{ type: "author" }],
     }),
     defineField({
       name: "mainImage",
+      fieldset: "optional",
       title: "アイキャッチ画像",
       type: "image",
+      description: "MVPの確認用ページでは表示しません。",
       options: { hotspot: true },
       fields: [
         defineField({ name: "alt", title: "画像の説明", type: "string" }),
@@ -93,9 +112,10 @@ const post = defineType({
     }),
     defineField({
       name: "articleImages",
+      fieldset: "optional",
       title: "本文用の画像",
       type: "array",
-      description: "ここに画像を保存し、画像のURLをMarkdown本文で使います。",
+      description: "保存した画像のURLをMarkdown本文へ貼り付けて使います。保存するだけでは本文に表示されません。",
       of: [
         {
           type: "image",
@@ -106,21 +126,16 @@ const post = defineType({
       ],
     }),
     defineField({
-      name: "markdownBody",
-      title: "Body (Markdown)",
-      type: "text",
-      rows: 24,
-      description: "Obsidian などで書いた Markdown をそのまま貼り付ける本文欄",
-    }),
-    defineField({
       name: "body",
-      title: "Body",
+      fieldset: "legacy",
+      title: "旧本文（従来の編集欄）",
       type: "array",
       description: "旧本文。Markdown 本文がある場合はそちらが優先表示されます。",
       of: [{ type: "block" }],
     }),
     defineField({
       name: "legacyWordPressId",
+      fieldset: "legacy",
       title: "元WordPress記事ID",
       type: "string",
       description: "移行元の記事ID。slugやSanityの文書IDとは別に記録します。",
@@ -129,6 +144,7 @@ const post = defineType({
     }),
     defineField({
       name: "legacyUrls",
+      fieldset: "legacy",
       title: "元WordPress URL",
       type: "array",
       description: "確認できた旧URLを記録します。複数形式を保持でき、転送設定には使用しません。",
@@ -142,6 +158,7 @@ const post = defineType({
     }),
     defineField({
       name: "migrationNotes",
+      fieldset: "legacy",
       title: "移行作業メモ（本文・SEOには使用しません）",
       type: "text",
       rows: 6,
@@ -216,11 +233,24 @@ const about = defineType({
 
 export default defineConfig({
   name: "default",
-  title: "ComfyLabo Blog Studio",
+  title: "ComfyLabo 新システム",
   projectId,
   dataset,
   basePath: "/studio",
-  plugins: [structureTool()],
+  plugins: [
+    structureTool({
+      title: "記事管理",
+      structure: (S) => S.list().id("content").title("コンテンツ").items([
+        S.listItem().id("mvp-welcome").title("確認用の記事（MVP）").child(
+          S.document().schemaType("post").documentId("comfylabo-mvp-welcome"),
+        ),
+        S.divider(),
+        S.documentTypeListItem("post").title("すべての記事"),
+        S.documentTypeListItem("author").title("著者"),
+        S.documentTypeListItem("about").title("運営者情報"),
+      ]),
+    }),
+  ],
   schema: {
     types: [post, author, about],
   },

@@ -9,11 +9,12 @@ import remarkGfm from "remark-gfm";
 import { PortableText } from "@portabletext/react";
 
 import { readSnapshot, validatePost } from "../lib/mvp-snapshot.mjs";
+import { collectArticleImages } from "./article-images.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
-function renderArticle(post, preview, styleVersion) {
+export function renderArticle(post, preview, styleVersion, homeHref) {
   const PostBody = ({ body }) => h("div", { className: "article-body" },
     typeof body === "string"
       ? h(ReactMarkdown, { remarkPlugins: [remarkGfm], children: body })
@@ -34,6 +35,7 @@ function renderArticle(post, preview, styleVersion) {
             h("img", { className: "logo", src: "./comfylabo-logo.jpg", alt: "ComfyLabo", width: 1179, height: 883, loading: "lazy" }),
             h("h1", { id: "article-title" }, post.title),
           ),
+          homeHref ? h("nav", { className: "article-nav", "aria-label": "記事の移動" }, h("a", { href: homeHref }, "← 記事一覧へ")) : null,
           h(PostBody, { body: post.body }),
         ),
         h("footer", { id: "reading-check" }, "ComfyLabo"),
@@ -54,22 +56,23 @@ export async function buildPostRelease(post, {
   releaseDirectory = path.join(root, ".mvp/releases"),
   logoPath = path.join(root, "public/comfylabo-logo.jpg"),
   preview = true,
+  imageOptions,
 } = {}) {
   validatePost(post);
   const styles = await readFile(path.join(root, "app/mvp/export.css"));
-  const html = renderArticle(post, preview, hash(styles).slice(0, 12));
-  // 未収集の相対画像を含む、不完全な成果物は作らない。
-  for (const [, src] of html.matchAll(/<img\b[^>]*\bsrc="([^"]*)"/g)) {
-    if (src !== "./comfylabo-logo.jpg" && !/^https?:\/\//.test(src)) {
-      throw new Error("本文に未対応の画像パスがあります。画像の配置を確認してください。");
-    }
-  }
+  const { html, files: images } = await collectArticleImages(
+    renderArticle(post, preview, hash(styles).slice(0, 12)), imageOptions,
+  );
   const files = {
     "index.html": Buffer.from(html),
     "styles.css": styles,
     "comfylabo-logo.jpg": await readFile(logoPath),
+    ...Object.fromEntries(Object.entries(images).sort(([a], [b]) => a.localeCompare(b))),
   };
   if (Object.values(files).some((value) => value.length === 0)) throw new Error("成果物が空です。");
+  if (Object.values(files).reduce((sum, value) => sum + value.length, 0) > 10 * 1024 * 1024) {
+    throw new Error("記事全体の容量上限を超えています。");
+  }
   await mkdir(releaseDirectory, { recursive: true });
   const staging = await mkdtemp(path.join(releaseDirectory, ".building-"));
   try {

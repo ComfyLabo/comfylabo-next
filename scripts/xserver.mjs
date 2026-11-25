@@ -3,9 +3,9 @@ import { readFile, stat } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { publicFiles } from "../lib/site-files.mjs";
 
 const serverScript = await readFile(new URL("./xserver-release.sh", import.meta.url), "utf8");
-const files = ["index.html", "styles.css", "comfylabo-logo.jpg"];
 
 export function run(command, args, input = "") {
   return new Promise((resolve, reject) => {
@@ -43,8 +43,9 @@ export async function transfer(action, release, env = process.env, execute = run
   if (action === "rollback") return remote("rollback");
   const version = path.basename(release || "");
   if (!/^[a-zA-Z0-9][a-zA-Z0-9.-]+$/.test(version) || version === "..") throw new Error("Invalid release path");
-  // ローカルでも3ファイルを照合し、失敗したら接続しない。
+  // ローカルでも全ファイルを照合し、失敗したら接続しない。
   const manifest = JSON.parse(await readFile(path.join(release, "manifest.json"), "utf8"));
+  const files = publicFiles(manifest);
   let sums = "";
   for (const file of files) {
     const content = await readFile(path.join(release, file));

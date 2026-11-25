@@ -47,6 +47,15 @@ export async function fetchPublishedPost(slug) {
   return posts[0];
 }
 
+export async function fetchPublishedPosts() {
+  // 一度の公開用クエリで一覧と本文を取得する。下書きトークンは使わない。
+  const posts = await queryPublished(`*[_type == "post" && !(_id in path("drafts.**")) && !(_id in path("versions.**"))] | order(publishedAt desc, _id asc)[0...101]{_id,_rev,title,"slug":slug.current,"body":coalesce(markdownBody,body),"author":author->name,publishedAt}`);
+  if (!Array.isArray(posts) || !posts.length || posts.length > 100) {
+    throw new Error("公開記事を1〜100件の範囲で取得できませんでした。以前の版は変更しません。");
+  }
+  return posts;
+}
+
 async function main() {
   loadEnvConfig(process.cwd(), false, { info() {}, error() {} });
   const [command, slug, ...extra] = process.argv.slice(2);

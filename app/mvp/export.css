@@ -16,7 +16,18 @@ main {
 .preview-note, footer { color: #5f6a64; font-size: .875rem; line-height: 1.8; }
 .preview-note { margin: 0; }
 header { margin-top: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid #e2e8e4; }
-.logo { display: block; width: 10rem; max-width: 100%; height: auto; }
+.logo { display: block; width: 16rem; max-width: 100%; height: auto; margin-inline: auto; }
+.list-intro { margin: .75rem 0 0; color: #5f6a64; line-height: 1.8; }
+.post-count { color: #5f6a64; font-size: .875rem; margin: 1.5rem 0 0; }
+.post-list ul { list-style: none; padding: 0; margin: 0; }
+.post-list li { padding: 1.75rem 0; border-bottom: 1px solid #e2e8e4; }
+.post-list time { color: #5f6a64; font-size: .875rem; line-height: 1.8; }
+.post-list h2 { margin: .5rem 0 0; font-size: 1.25rem; line-height: 1.7; overflow-wrap: anywhere; }
+.post-list a { color: #26372f; text-decoration: none; }
+.post-list a:hover { text-decoration: underline; text-underline-offset: .2em; }
+.article-nav { margin-top: 1.5rem; font-size: .9375rem; }
+.article-nav a { color: #285943; text-underline-offset: .2em; }
+.post-list a:focus-visible, .article-nav a:focus-visible { outline: 2px solid #285943; outline-offset: 4px; }
 h1 {
   margin: 1.5rem 0 0;
   font-size: clamp(1.75rem, 4vw, 2.25rem);
@@ -53,7 +64,7 @@ footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #e2e8e4; }
 @media (min-width: 40rem) {
   main { padding-top: 3.5rem; padding-bottom: 5rem; }
   header { margin-top: 2.5rem; padding-bottom: 2rem; }
-  .logo { width: 12rem; }
+  .logo { width: 18rem; }
   .article-body { margin-top: 2.5rem; font-size: 1.125rem; }
   .article-body h2 { font-size: 1.5rem; }
   .article-body h3 { font-size: 1.25rem; }

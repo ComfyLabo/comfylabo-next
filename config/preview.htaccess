@@ -9,5 +9,7 @@ RewriteRule ^ - [R=404,END]
 # 無料SSLの発行・更新に必要な確認ファイルはそのまま配信する。
 RewriteRule ^\.well-known/acme-challenge/[A-Za-z0-9_-]+$ - [END]
 RewriteRule ^$ site/index.html [END]
+RewriteRule ^posts/([a-z0-9]+(?:-[a-z0-9]+)*)/$ site/posts/$1/index.html [END]
 RewriteRule ^(styles\.css|comfylabo-logo\.jpg)$ site/$1 [END]
+RewriteRule ^(image-[a-f0-9]{64}\.(?:jpg|png|webp))$ site/$1 [END]
 RewriteRule ^ - [R=404,END]

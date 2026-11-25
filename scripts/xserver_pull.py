@@ -1,5 +1,6 @@
 """Pull only the approved preview article. No SSH keys or API tokens required."""
 import fcntl
+import json
 import os
 import re
 import subprocess
@@ -8,7 +9,7 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
-from site_bundle import MAX_BYTES, PUBLIC_FILES, sha256, unpack
+from site_bundle import MAX_BYTES, manifest_files, sha256, unpack
 
 ASSETS = "https://github.com/ComfyLabo/comfylabo-next/releases/download/comfylabo-preview/"
 SITE = "https://next.comfylabo.com/"
@@ -33,13 +34,15 @@ def download(url):
 
 
 def verify_public(files):
-    for name in PUBLIC_FILES:
-        url = SITE if name == "index.html" else SITE + name
+    manifest = json.loads(files["manifest.json"].decode("utf-8"))
+    for name in manifest_files(manifest, blog=manifest.get("version") == 2):
+        route = name[:-10] if name.endswith("index.html") else name
+        url = SITE + route
         if sha256(download(url)) != sha256(files[name]):
             raise ValueError("Public content differs from the verified release")
 
 
-def apply(root, fetch=download, verify=verify_public):
+def apply(root, fetch=download, verify=verify_public, blog=False):
     root = Path(root)
     if root.name != "comfylabo-next" or root.is_symlink():
         raise ValueError("Invalid release root")
@@ -63,7 +66,7 @@ def apply(root, fetch=download, verify=verify_public):
         data = fetch(ASSETS + "comfylabo-preview.zip")
         if sha256(data) != digest:
             raise ValueError("Archive checksum mismatch; keeping current release")
-        files = unpack(data, POST_ID, SLUG)
+        files = unpack(data, POST_ID, SLUG, blog=blog)
         version = "github-" + digest
         target = root / "releases" / version
         if target.exists() or target.is_symlink():
@@ -75,6 +78,7 @@ def apply(root, fetch=download, verify=verify_public):
             directory.mkdir()
             # Never extract arbitrary archive paths or symlinks.
             for name, content in files.items():
+                (directory / name).parent.mkdir(parents=True, exist_ok=True)
                 (directory / name).write_bytes(content)
             directory.rename(str(target))
         # Remember this digest before switching: a later manual rollback stays restored.
@@ -98,7 +102,10 @@ if __name__ == "__main__":
         sys.exit("Automatic preview deployment is disabled")
     if len(sys.argv) != 2 or not re.fullmatch(r"/home/[A-Za-z0-9_-]+/comfylabo-next", sys.argv[1]):
         sys.exit("Invalid dedicated release root")
+    mode = os.environ.get("COMFYLABO_PREVIEW_MODE", "single")
+    if mode not in ("single", "blog"):
+        sys.exit("Invalid preview mode")
     try:
-        print(apply(sys.argv[1]))
+        print(apply(sys.argv[1], blog=mode == "blog"))
     except Exception:
         sys.exit("Preview update failed. Inspect the current/previous links and pull log before retrying.")

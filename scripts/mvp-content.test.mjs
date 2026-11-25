@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { fetchPublishedPost, saveSnapshot, validatePost } from "./mvp-content.mjs";
+import { fetchPublishedPost, fetchPublishedPosts, saveSnapshot, validatePost } from "./mvp-content.mjs";
 import { readSnapshot } from "../lib/mvp-snapshot.mjs";
 
 const post = { _id: "post-1", _rev: "revision-1", title: "検証用", slug: "example", body: "記事本文" };
@@ -34,12 +34,17 @@ test("Sanityは公開済みを匿名取得し、未取得・不正応答はエ�
   });
   try {
     assert.deepEqual(await fetchPublishedPost("example"), post);
+    assert.deepEqual(await fetchPublishedPosts(), [post]);
     for (const result of [[], [post, post], null]) {
       response = () => Response.json({ result });
       await assert.rejects(fetchPublishedPost("example"));
     }
     response = () => new Response("Unavailable", { status: 503 });
     await assert.rejects(fetchPublishedPost("example"));
+    for (const result of [[], null, Array(101).fill(post)]) {
+      response = () => Response.json({ result });
+      await assert.rejects(fetchPublishedPosts());
+    }
     response = () => Response.json(null);
     await assert.rejects(fetchPublishedPost("example"));
     response = () => { throw new Error("Connection failed"); };
