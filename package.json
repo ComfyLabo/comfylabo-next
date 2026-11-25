@@ -16,7 +16,11 @@
     "mvp:export": "node scripts/mvp-export.mjs",
     "test:mvp": "node --test scripts/*.test.mjs",
     "test:pull": "python3 -B -m unittest discover -s scripts -p '*_test.py'",
-    "studio:dev": "next dev --hostname 127.0.0.1 --port 3333"
+    "studio:dev": "next dev --hostname 127.0.0.1 --port 3333",
+    "article:production:build": "node scripts/production-article.mjs",
+    "article:production:package": "node scripts/production-transfer.mjs package",
+    "article:production:deploy": "node scripts/production-transfer.mjs deploy",
+    "article:production:rollback": "node scripts/production-transfer.mjs rollback"
   },
   "dependencies": {
     "@portabletext/react": "^6.0.0",

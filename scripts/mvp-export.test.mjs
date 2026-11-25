@@ -5,7 +5,28 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { saveSnapshot } from "../lib/mvp-snapshot.mjs";
-import { buildRelease, buildPostRelease } from "./mvp-export.mjs";
+import { buildRelease, buildPostRelease, renderArticle } from "./mvp-export.mjs";
+import { publicFiles, publishedBlogFiles } from "../lib/site-files.mjs";
+
+test('本番メタデータは検索・共有情報を保持し、構造化データからscriptを脱出できない', async () => {
+  const url = 'https://comfylabo.com/4484/';
+  const metadata = {description: '説明文 <確認>', openGraph: {'og:url': url, 'og:type': 'article', 'og:title': '記事',
+    'og:description': '説明文', 'og:image': 'https://comfylabo.com/old.jpg', 'og:site_name': 'ComfyLabo', 'og:locale': 'ja_JP'},
+    structuredData: {'@context': 'https://schema.org', '@type': 'Article', mainEntityOfPage: {'@id': url},
+      headline: '</script><script>alert(1)</script>', datePublished: '2026-03-20T01:08:00.000Z'}};
+  const post = {_id: '6a6732df-f6d2-434e-9fca-7e745ad0b11a', _rev: 'published', slug: '4484', title: '記事', body: '本文'};
+  const html = renderArticle(post, false, 'style', '/', url, metadata);
+  assert.match(html, /name="description" content="説明文 &lt;確認&gt;"/);
+  assert.match(html, /name="robots" content="max-image-preview:large"/);
+  assert.equal((html.match(/property="og:/g) || []).length, 7);
+  const data = html.match(/<script type="application\/ld\+json">(.*?)<\/script>/)[1];
+  assert.deepEqual(JSON.parse(data), metadata.structuredData);
+  assert.ok(!data.includes('<'));
+  assert.equal((html.match(/<script/g) || []).length, 1);
+  await assert.rejects(buildPostRelease(post, {productionMetadata: metadata}));
+  await assert.rejects(buildPostRelease(post, {preview: false, productionUrl: url,
+    productionMetadata: {...metadata, openGraph: {'og:url': 'https://other.example/'}}}));
+});
 
 test("記事・CSS・ロゴを生成し、失敗時と再生成時に以前の正常版を維持する", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "comfylabo-export-"));
@@ -38,6 +59,34 @@ test("記事・CSS・ロゴを生成し、失敗時と再生成時に以前の�
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("本番候補は既存URLを正規URLとし、確認用の配備形式へ混ぜない", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "comfylabo-production-"));
+  const post = {_id: "6a6732df-f6d2-434e-9fca-7e745ad0b11a", _rev: "published", slug: "4484", title: "対象記事", body: "## 確認\n\n公開済みの本文です。"};
+  const production = {releaseDirectory: directory, preview: false, productionUrl: "https://comfylabo.com/4484/"};
+  try {
+    const release = await buildPostRelease(post, production);
+    const html = await readFile(path.join(release, "index.html"), "utf8");
+    assert.ok(html.includes('<link rel="canonical" href="https://comfylabo.com/4484/"'));
+    assert.ok(!html.includes('noindex'));
+    assert.ok(!html.includes('新システムの表示確認用'));
+    assert.ok(html.includes('href="/"'));
+    const manifest = JSON.parse(await readFile(path.join(release, "manifest.json"), "utf8"));
+    assert.equal(manifest.version, 3);
+    assert.equal(manifest.target, production.productionUrl);
+    assert.throws(() => publicFiles(manifest));
+    assert.throws(() => publishedBlogFiles(manifest));
+    const preview = await buildPostRelease(post, {releaseDirectory: directory});
+    const previewHtml = await readFile(path.join(preview, "index.html"), "utf8");
+    assert.ok(previewHtml.includes('noindex, nofollow'));
+    assert.ok(!previewHtml.includes('rel="canonical"'));
+    for (const [changedPost, changedOptions] of [
+      [{...post, _id: 'another-post'}, production], [{...post, slug: 'another-slug'}, production],
+      [post, {...production, preview: true}], [post, {...production, productionUrl: 'https://other.example/4484/'}],
+    ]) await assert.rejects(buildPostRelease(changedPost, changedOptions));
+    assert.equal((await readdir(directory)).length, 2);
+  } finally { await rm(directory, {recursive: true, force: true}); }
 });
 
 test("画像を含む版を照合対象へ追加し、画像失敗・下書きでは正常版を保持する", async () => {

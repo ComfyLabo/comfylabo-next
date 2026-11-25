@@ -1,0 +1,80 @@
+name: ComfyLabo production article 4484
+
+on:
+  push:
+    branches: [main]
+  repository_dispatch:
+    types: [sanity-publish]
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        description: Build only, or publish the separately approved production article
+        options: [build, publish-production]
+        default: build
+
+permissions:
+  contents: read
+
+concurrency:
+  group: comfylabo-production-4484
+  cancel-in-progress: false
+
+jobs:
+  production:
+    if: github.repository == 'ComfyLabo/comfylabo-next' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      NEXT_PUBLIC_SANITY_PROJECT_ID: '0lwnb6yi'
+      NEXT_PUBLIC_SANITY_DATASET: production
+      # Empty/default values NEVER enable production publication.
+      COMFYLABO_PRODUCTION_AUTO_DEPLOY: ${{ vars.COMFYLABO_PRODUCTION_AUTO_DEPLOY || 'disabled' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run test:mvp
+      - run: npm run test:pull
+      - name: Build the published Obsidian article only
+        id: build
+        run: npm run article:production:build
+      - name: Package public content only
+        env:
+          RELEASE: ${{ steps.build.outputs.release }}
+        run: python3 -B scripts/production_bundle.py "$RELEASE" .mvp/production-bundle
+      - name: Publish production bundle without SSH or Sanity write credentials
+        if: >-
+          env.COMFYLABO_PRODUCTION_AUTO_DEPLOY == 'obsidian-4484' &&
+          (github.event_name == 'repository_dispatch' || inputs.action == 'publish-production')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view comfylabo-production-4484 >/dev/null 2>&1; then
+            gh release create comfylabo-production-4484 --target "$COMMIT" --prerelease --latest=false \
+              --title 'ComfyLabo production article 4484' --notes 'Published Obsidian article only; no server settings or drafts.'
+          fi
+          gh release upload comfylabo-production-4484 .mvp/production-bundle/comfylabo-production-4484.zip --clobber
+          gh release upload comfylabo-production-4484 .mvp/production-bundle/comfylabo-production-4484.sha256 --clobber
+      - name: Explain a failed production workflow
+        if: failure()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'MARKDOWN'
+          ## Obsidian記事の本番用生成が完了していません
+
+          原稿・画像・テスト・Release更新の失敗工程を確認してください。
+          このActionsはXserverへ接続せず、受信結果も保証しません。
+          記事を削除したりPublishを繰り返す前に、受信ログと現在の正常版を確認します。
+          手順：docs/production-autopublish.md
+          MARKDOWN

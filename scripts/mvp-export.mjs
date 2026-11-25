@@ -14,7 +14,7 @@ import { collectArticleImages } from "./article-images.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
-export function renderArticle(post, preview, styleVersion, homeHref) {
+export function renderArticle(post, preview, styleVersion, homeHref, canonicalUrl, metadata) {
   const PostBody = ({ body }) => h("div", { className: "article-body" },
     typeof body === "string"
       ? h(ReactMarkdown, { remarkPlugins: [remarkGfm], children: body })
@@ -26,6 +26,13 @@ export function renderArticle(post, preview, styleVersion, homeHref) {
         h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
         preview ? h("meta", { name: "robots", content: "noindex, nofollow" }) : null,
         h("title", null, `${post.title} | ComfyLabo`),
+        canonicalUrl ? h("link", { rel: "canonical", href: canonicalUrl }) : null,
+        metadata ? h("meta", {name: "description", content: metadata.description}) : null,
+        metadata ? h("meta", {name: "robots", content: "max-image-preview:large"}) : null,
+        ...(metadata ? Object.entries(metadata.openGraph).map(([property, content]) => h("meta", {key: property, property, content})) : []),
+        metadata ? h("script", {type: "application/ld+json", dangerouslySetInnerHTML: {
+          __html: JSON.stringify(metadata.structuredData).replaceAll('<', '\\u003c'),
+        }}) : null,
         h("link", { rel: "stylesheet", href: `./styles.css?v=${styleVersion}` }),
       ),
       h("body", null, h("main", null,
@@ -57,11 +64,21 @@ export async function buildPostRelease(post, {
   logoPath = path.join(root, "public/comfylabo-logo.jpg"),
   preview = true,
   imageOptions,
+  productionUrl,
+  productionMetadata,
 } = {}) {
   validatePost(post);
+  if (productionUrl !== undefined && (preview !== false || productionUrl !== "https://comfylabo.com/4484/" ||
+      post._id !== "6a6732df-f6d2-434e-9fca-7e745ad0b11a" || post.slug !== "4484")) {
+    throw new Error("本番候補は承認準備中のObsidian記事と既存URLだけに限定しています。");
+  }
+  if (productionMetadata && (!productionUrl || productionMetadata.openGraph?.['og:url'] !== productionUrl ||
+      productionMetadata.structuredData?.mainEntityOfPage?.['@id'] !== productionUrl)) {
+    throw new Error("本番メタデータの対象URLが一致しません。");
+  }
   const styles = await readFile(path.join(root, "app/mvp/export.css"));
   const { html, files: images } = await collectArticleImages(
-    renderArticle(post, preview, hash(styles).slice(0, 12)), imageOptions,
+    renderArticle(post, preview, hash(styles).slice(0, 12), productionUrl ? "/" : undefined, productionUrl, productionMetadata), imageOptions,
   );
   const files = {
     "index.html": Buffer.from(html),
@@ -76,7 +93,11 @@ export async function buildPostRelease(post, {
   await mkdir(releaseDirectory, { recursive: true });
   const staging = await mkdtemp(path.join(releaseDirectory, ".building-"));
   try {
-    const manifest = { version: 1, postId: post._id, revision: post._rev, slug: post.slug, files: {} };
+    // Production candidates cannot be passed into either existing preview deployment mode.
+    const manifest = { version: productionUrl ? 3 : 1,
+      ...(productionUrl ? {kind: "production-article-candidate", target: productionUrl,
+        source: {kind: "sanity-published", projectId: "0lwnb6yi", dataset: "production"}} : {}),
+      postId: post._id, revision: post._rev, slug: post.slug, files: {} };
     for (const [name, content] of Object.entries(files)) {
       await writeFile(path.join(staging, name), content, { flag: "wx" });
       if (hash(await readFile(path.join(staging, name))) !== hash(content)) throw new Error("成果物の検証に失敗しました。");
