@@ -6,6 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { validatePost } from "../lib/mvp-snapshot.mjs";
 import { renderArticle } from "./mvp-export.mjs";
 import { collectArticleImages } from "./article-images.mjs";
+import {validateNewProductionPosts} from './new-production-content.mjs';
+import {SITE, LEGACY_ID, articleRoute, collectionMetadata} from './collection-metadata.mjs';
 
 const root = path.resolve(import.meta.dirname, "..");
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -15,17 +17,18 @@ function dateLabel(value) {
   return new Intl.DateTimeFormat("ja-JP", { year: "numeric", month: "long", day: "numeric", timeZone: "Asia/Tokyo" }).format(new Date(value));
 }
 
-function renderIndex(posts, cssVersion) {
+function renderIndex(posts, cssVersion, production = false) {
   return "<!doctype html>\n" + renderToStaticMarkup(h("html", { lang: "ja" },
     h("head", null,
       h("meta", { charSet: "utf-8" }),
       h("meta", { name: "viewport", content: "width=device-width, initial-scale=1" }),
-      h("meta", { name: "robots", content: "noindex, nofollow" }),
+      h("meta", { name: "robots", content: production ? "max-image-preview:large" : "noindex, nofollow" }),
+      production ? h('link', {rel: 'canonical', href: SITE + '/readings/'}) : null,
       h("title", null, "記事一覧 | ComfyLabo"),
       h("link", { rel: "stylesheet", href: `./styles.css?v=${cssVersion}` }),
     ),
     h("body", null, h("main", null,
-      h("p", { className: "preview-note" }, "新システムの表示確認用"),
+      production ? null : h("p", { className: "preview-note" }, "新システムの表示確認用"),
       h("header", null,
         h("img", { className: "logo", src: "./comfylabo-logo.jpg", alt: "ComfyLabo", width: 1179, height: 883 }),
         h("h1", null, "読みもの"),
@@ -35,7 +38,7 @@ function renderIndex(posts, cssVersion) {
         h("p", { className: "post-count" }, `全${posts.length}記事`),
         h("ul", null, posts.map((post) => h("li", { key: post._id },
           post.publishedAt ? h("time", { dateTime: post.publishedAt }, dateLabel(post.publishedAt)) : null,
-          h("h2", null, h("a", { href: `./posts/${post.slug}/` }, post.title)),
+          h("h2", null, h("a", { href: production ? articleRoute(post) : `./posts/${post.slug}/` }, post.title)),
         ))),
       ),
       h("footer", null, "ComfyLabo"),
@@ -47,8 +50,17 @@ export async function buildBlogRelease(input, {
   releaseDirectory = path.join(root, ".mvp/blog-releases"),
   imageOptions,
   source = { kind: "local" },
+  production = false,
 } = {}) {
-  if (!Array.isArray(input) || !input.length || input.length > 100) throw new Error("公開記事は1〜100件必要です。");
+  if (!Array.isArray(input) || !input.length || input.length > (production ? 101 : 100)) throw new Error("公開記事の件数が不正です。");
+  let legacyMetadata;
+  if (production) {
+    if (source.kind !== 'sanity-published' || source.projectId !== '0lwnb6yi' || source.dataset !== 'production' || Object.keys(source).length !== 3 ||
+        input.filter(p => p._id === LEGACY_ID && p.slug === '4484').length !== 1) throw Error('本番の取得元または既存記事が不正です。');
+    validateNewProductionPosts(input.filter(p => p._id !== LEGACY_ID));
+    legacyMetadata = JSON.parse(await readFile(path.join(root, 'config/obsidian-production-metadata.json'), 'utf8'));
+    if (legacyMetadata.target !== SITE + '/4484/') throw Error('既存の正規URLが不正です。');
+  }
   const slugs = new Set();
   const ids = new Set();
   for (const post of input) {
@@ -67,20 +79,23 @@ export async function buildBlogRelease(input, {
   const styles = await readFile(path.join(root, "app/mvp/export.css"));
   const cssVersion = hash(styles).slice(0, 12);
   const files = {
-    "index.html": Buffer.from(renderIndex(posts, cssVersion)),
+    "index.html": Buffer.from(renderIndex(posts, cssVersion, production)),
     "styles.css": styles,
     "comfylabo-logo.jpg": await readFile(path.join(root, "public/comfylabo-logo.jpg")),
   };
   for (const post of posts) {
-    const collected = await collectArticleImages(renderArticle(post, true, cssVersion, "../../"), imageOptions);
+    const metadata = production ? collectionMetadata(post, legacyMetadata) : undefined;
+    const collected = await collectArticleImages(renderArticle(post, !production, cssVersion, production ? '/readings/' : "../../",
+      production ? SITE + articleRoute(post) : undefined, metadata), imageOptions);
     let html = collected.html;
+    const assetPrefix = production ? '/readings/' : '../../';
     // 画像とスタイルはルートで共有し、深い記事URLからも参照できるようにする。
     for (const name of ["styles.css", "comfylabo-logo.jpg", ...Object.keys(collected.files)]) {
-      html = html.replaceAll(`src="./${name}"`, `src="../../${name}"`)
-        .replaceAll(`href="./${name}"`, `href="../../${name}"`);
+      html = html.replaceAll(`src="./${name}"`, `src="${assetPrefix}${name}"`)
+        .replaceAll(`href="./${name}"`, `href="${assetPrefix}${name}"`);
     }
-    html = html.replace(`href="./styles.css?v=${cssVersion}"`, `href="../../styles.css?v=${cssVersion}"`);
-    files[articlePath(post.slug)] = Buffer.from(html);
+    html = html.replace(`href="./styles.css?v=${cssVersion}"`, `href="${assetPrefix}styles.css?v=${cssVersion}"`);
+    files[production && post._id === LEGACY_ID ? 'legacy/4484/index.html' : articlePath(post.slug)] = Buffer.from(html);
     Object.assign(files, collected.files);
     if (Object.values(files).reduce((sum, bytes) => sum + bytes.length, 0) > 10 * 1024 * 1024) {
       throw new Error("記事一覧を含む成果物全体の10MiB上限を超えています。");
@@ -90,7 +105,11 @@ export async function buildBlogRelease(input, {
   await mkdir(releaseDirectory, { recursive: true });
   const staging = await mkdtemp(path.join(releaseDirectory, ".building-"));
   try {
-    const manifest = { version: 2, kind: "article-list", source, posts: posts.map((post) => ({ id: post._id, revision: post._rev, slug: post.slug })), files: {} };
+    const legacy = production ? posts.find(p => p._id === LEGACY_ID) : null;
+    const manifest = { version: production ? 4 : 2, kind: production ? 'production-collection' : "article-list", source,
+      ...(production ? {target: SITE, postId: LEGACY_ID, revision: legacy._rev} : {}),
+      posts: posts.map((post) => ({ id: post._id, revision: post._rev, slug: post.slug,
+        ...(production && post._id !== LEGACY_ID ? {publicationSystem: post.publicationSystem} : {})})), files: {} };
     for (const name of Object.keys(files).sort()) {
       const bytes = files[name];
       await mkdir(path.dirname(path.join(staging, name)), { recursive: true });

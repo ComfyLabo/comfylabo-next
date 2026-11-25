@@ -1,4 +1,4 @@
-"""One-article production updates; disabled until separately approved and installed."""
+"""Approved production updates; collection mode needs a separate explicit scope."""
 import fcntl
 from datetime import datetime
 import json
@@ -7,11 +7,12 @@ import re
 import sys
 import urllib.request
 from pathlib import Path
-from production_bundle import MAX_BYTES, ZIP_NAME, DIGEST_NAME, unpack
+from production_bundle import MAX_BYTES, bundle_names, unpack
 from production_deploy import (PRIVATE, PUBLIC, NAMESPACE, digest, regular, real_directory,
                                expected_routing, load_package, validate_article, atomic_config, verify_public)
 
 ASSETS = 'https://github.com/ComfyLabo/comfylabo-next/releases/download/comfylabo-production-4484/'
+COLLECTION_ASSETS = 'https://github.com/ComfyLabo/comfylabo-next/releases/download/comfylabo-production-collection/'
 BOOTSTRAP = 'bc9be8f7a04aa98fca7403483d4b2645c02e108d09f0ccaf4e3a0f5a9f3863c1'
 STORAGE_LIMIT = 100 * 1024 * 1024
 
@@ -52,8 +53,8 @@ def save_state(private, state):
     atomic_config(private / 'automatic-state.json', (json.dumps(state) + '\n').encode('ascii'), 0o600, os.getgid())
 
 
-def load_version(private, version):
-    result = load_package(private / 'incoming' / version)
+def load_version(private, version, collection=False):
+    result = load_package(private / 'incoming' / version, collection)
     if result[0]['manifestSha256'] != version:
         raise ValueError('Version directory and manifest differ')
     return result
@@ -93,12 +94,14 @@ def storage_bytes(private, public):
     return total
 
 
-def prepared_package(files, original):
-    manifest = validate_article(files)
+def prepared_package(files, original, collection=False):
+    manifest = validate_article(files, collection)
+    if manifest['version'] != (4 if collection else 3):
+        raise ValueError('Incoming format differs from the approved scope')
     version = digest(files['manifest.json'])
     directory = NAMESPACE + '/' + version
     names = manifest['files']
-    after, routes, legacy = expected_routing(original, names, directory)
+    after, routes, legacy = expected_routing(original, names, directory, manifest)
     plan = {'version': 1, 'kind': 'production-routing-plan', 'target': manifest['target'],
             'postId': manifest['postId'], 'revision': manifest['revision'], 'directory': directory,
             'routes': routes, 'manifestSha256': version, 'beforeSha256': digest(original), 'afterSha256': digest(after)}
@@ -108,12 +111,16 @@ def prepared_package(files, original):
     return version, plan, package
 
 
-def install_update(private, public, state, files, verify):
-    current_plan, current_files, original, before, legacy = load_version(private, state['current'])
+def install_update(private, public, state, files, verify, collection=False):
+    current_plan, current_files, original, before, legacy = load_version(private, state['current'], collection)
     config = public / '.htaccess'
     if regular(config) != before:
         raise ValueError('Production settings changed; inspect before updating')
-    version, plan, package = prepared_package(files, original)
+    version, plan, package = prepared_package(files, original, collection)
+    if collection:
+        from production_collection import preserve_articles
+        previous_manifest = json.loads(regular(private / 'incoming' / state['current'] / 'manifest.json').decode('utf-8'))
+        preserve_articles(previous_manifest, json.loads(files['manifest.json'].decode('utf-8')))
     if version == state['current']:
         return 'No content change'
     # Conservative reservation includes private controls + public copy; no old files are deleted.
@@ -126,13 +133,15 @@ def install_update(private, public, state, files, verify):
         raise ValueError('Version already exists; inspect before retrying')
     incoming.mkdir(mode=0o700)
     for name, data in package.items():
+        (incoming / name).parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         (incoming / name).write_bytes(data)
         (incoming / name).chmod(0o600)
-    load_package(incoming)
+    load_package(incoming, collection)
     target.mkdir(mode=0o755)
     for name in files:
         if name == 'manifest.json':
             continue
+        (target / name).parent.mkdir(parents=True, exist_ok=True, mode=0o755)
         (target / name).write_bytes(files[name])
         (target / name).chmod(0o644)
         if regular(target / name) != files[name]:
@@ -153,7 +162,7 @@ def install_update(private, public, state, files, verify):
     return 'Production article updated: ' + version
 
 
-def apply(private=PRIVATE, public=PUBLIC, fetch=download, verify=verify_public):
+def apply(private=PRIVATE, public=PUBLIC, fetch=download, verify=verify_public, collection=False):
     private, public = Path(private), Path(public)
     check_roots(private, public)
     lock_file = private / '.automatic.lock'
@@ -165,25 +174,27 @@ def apply(private=PRIVATE, public=PUBLIC, fetch=download, verify=verify_public):
         except BlockingIOError:
             return 'Another production operation is running'
         state = load_state(private)
-        plan, files, original, current, legacy = load_version(private, state['current'])
+        plan, files, original, current, legacy = load_version(private, state['current'], collection)
         if regular(public / '.htaccess') != current:
             raise ValueError('Production settings changed; refusing overwrite')
-        checksum = fetch(ASSETS + DIGEST_NAME).decode('ascii').strip()
+        assets = COLLECTION_ASSETS if collection else ASSETS
+        zip_name, checksum_name = bundle_names(collection)
+        checksum = fetch(assets + checksum_name).decode('ascii').strip()
         if not valid_version(checksum):
             raise ValueError('Invalid archive digest')
         if checksum == state['handled']:
             return 'No new production release'
-        data = fetch(ASSETS + ZIP_NAME)
+        data = fetch(assets + zip_name)
         if digest(data) != checksum:
             raise ValueError('Archive checksum mismatch')
-        incoming = unpack(data)
+        incoming = unpack(data, collection)
         # Do not reapply a failed version or undo a manual rollback every two minutes.
         state['handled'] = checksum
         save_state(private, state)
-        return install_update(private, public, state, incoming, verify)
+        return install_update(private, public, state, incoming, verify, collection)
 
 
-def rollback(private=PRIVATE, public=PUBLIC, verify=verify_public):
+def rollback(private=PRIVATE, public=PUBLIC, verify=verify_public, collection=False):
     private, public = Path(private), Path(public)
     check_roots(private, public)
     lock_file = private / '.automatic.lock'
@@ -194,8 +205,8 @@ def rollback(private=PRIVATE, public=PUBLIC, verify=verify_public):
         state = load_state(private)
         if not state['previous']:
             raise ValueError('No previous automatic release')
-        current = load_version(private, state['current'])[3]
-        plan, files, original, previous, legacy = load_version(private, state['previous'])
+        current = load_version(private, state['current'], collection)[3]
+        plan, files, original, previous, legacy = load_version(private, state['previous'], collection)
         config = public / '.htaccess'
         if regular(config) != current:
             raise ValueError('Production settings changed; refusing recovery')
@@ -219,11 +230,12 @@ def rollback(private=PRIVATE, public=PUBLIC, verify=verify_public):
 if __name__ == '__main__':
     try:
         if sys.argv[1:] == ['rollback']:
-            if os.environ.get('COMFYLABO_PRODUCTION_APPROVED') != 'obsidian-4484':
+            scope = os.environ.get('COMFYLABO_PRODUCTION_APPROVED')
+            if scope not in ('obsidian-4484', 'new-articles'):
                 raise ValueError('Explicit recovery approval required')
-            result = rollback()
-        elif not sys.argv[1:] and os.environ.get('COMFYLABO_PRODUCTION_AUTO_DEPLOY') == 'obsidian-4484':
-            result = apply()
+            result = rollback(collection=scope == 'new-articles')
+        elif not sys.argv[1:] and os.environ.get('COMFYLABO_PRODUCTION_AUTO_DEPLOY') in ('obsidian-4484', 'new-articles'):
+            result = apply(collection=os.environ['COMFYLABO_PRODUCTION_AUTO_DEPLOY'] == 'new-articles')
         else:
             raise ValueError('Production automation is disabled')
         if not result.startswith(('No ', 'Another ')):
@@ -231,8 +243,8 @@ if __name__ == '__main__':
         print(result)
     except Exception:
         message = 'Production operation failed. Inspect settings, state, and retained versions before retrying.'
-        if (os.environ.get('COMFYLABO_PRODUCTION_AUTO_DEPLOY') == 'obsidian-4484' or
-                os.environ.get('COMFYLABO_PRODUCTION_APPROVED') == 'obsidian-4484'):
+        if (os.environ.get('COMFYLABO_PRODUCTION_AUTO_DEPLOY') in ('obsidian-4484', 'new-articles') or
+                os.environ.get('COMFYLABO_PRODUCTION_APPROVED') in ('obsidian-4484', 'new-articles')):
             try:
                 record(message)
             except Exception:

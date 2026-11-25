@@ -20,7 +20,8 @@
     "article:production:build": "node scripts/production-article.mjs",
     "article:production:package": "node scripts/production-transfer.mjs package",
     "article:production:deploy": "node scripts/production-transfer.mjs deploy",
-    "article:production:rollback": "node scripts/production-transfer.mjs rollback"
+    "article:production:rollback": "node scripts/production-transfer.mjs rollback",
+    "articles:production:build": "node scripts/production-collection.mjs"
   },
   "dependencies": {
     "@portabletext/react": "^6.0.0",

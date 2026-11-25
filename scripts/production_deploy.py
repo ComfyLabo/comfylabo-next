@@ -1,4 +1,4 @@
-"""One approved article only. CLI writes are disabled without an explicit approval flag."""
+"""Single-article default with an explicit collection opt-in; guarded CLI writes."""
 import hashlib
 import json
 import os
@@ -43,7 +43,7 @@ def legacy_file(public, legacy):
     return target
 
 
-def expected_routing(before, files, directory):
+def expected_routing(before, files, directory, manifest=None):
     text = before.decode('utf-8')
     pattern = r'^RewriteCond %\{REQUEST_URI\} \^/4484/\$\r?\nRewriteRule \^ "/_comfy_release_[a-f0-9]+/public-files\.review/4484/index\.html" \[END\]'
     matches = list(re.finditer(pattern, text, re.M))
@@ -51,19 +51,32 @@ def expected_routing(before, files, directory):
         raise ValueError('Unexpected original routing')
     newline = '\r\n' if '\r\n' in text else '\n'
     block = ['# BEGIN ComfyLabo article 4484', 'RewriteRule ^' + NAMESPACE + '(?:/|$) - [R=404,END]']
-    routes = []
-    for name in sorted(files):
-        url = '/4484/' if name == 'index.html' else '/4484/' + name
-        routes.append({'url': url, 'file': name})
+    if manifest and manifest.get('version') == 4:
+        from production_collection import routes as collection_routes
+        if re.search(r'^RewriteCond %\{REQUEST_URI\} \^/(?:posts|readings)(?:/|\$)', text, re.M):
+            raise ValueError('Existing routes conflict with new collection')
+        routes = collection_routes(manifest)
+    else:
+        routes = [{'url': '/4484/' if name == 'index.html' else '/4484/' + name, 'file': name} for name in sorted(files)]
+    for route in routes:
+        url, name = route['url'], route['file']
         block.extend(['RewriteCond %{REQUEST_URI} ^' + url.replace('.', '\\.') + '$', 'RewriteRule ^ "/' + directory + '/' + name + '" [END]'])
+    if manifest and manifest.get('version') == 4:
+        for route in routes:
+            if route['url'].endswith('/') and route['url'] != '/4484/':
+                short = route['url'][:-1]
+                block.extend(['RewriteCond %{REQUEST_URI} ^' + short + '$', 'RewriteRule ^ https://comfylabo.com' + route['url'] + ' [R=301,END]'])
     block.append('# END ComfyLabo article 4484')
     m = matches[0]
     return (text[:m.start()] + newline.join(block) + text[m.end():]).encode('utf-8'), routes, re.search(r'"(/[^"\n]+)"', m.group()).group(1)
 
 
-def validate_article(files):
+def validate_article(files, collection=False):
     raw = files['manifest.json']
     manifest = json.loads(raw.decode('utf-8'))
+    if collection and manifest.get('version') == 4:
+        from production_collection import validate
+        return validate(files)
     source = manifest.get('source', {})
     if (manifest.get('version') != 3 or manifest.get('kind') != 'production-article-candidate' or manifest.get('target') != URL or
             manifest.get('postId') != ARTICLE or manifest.get('slug') != '4484' or
@@ -84,25 +97,29 @@ def validate_article(files):
     return manifest
 
 
-def load_package(package):
+def load_package(package, collection=False):
     package = Path(package)
     if package.is_symlink() or not package.is_dir():
         raise ValueError('Unexpected package')
     raw = regular(package / 'manifest.json')
     manifest = json.loads(raw.decode('utf-8'))
     names = manifest.get('files', {})
-    if not isinstance(names, dict) or any(n not in BASE and not IMAGE.fullmatch(n) for n in names):
+    if collection:
+        from production_collection import allowed_file
+    else:
+        allowed_file = lambda n: n in BASE or IMAGE.fullmatch(n)
+    if not isinstance(names, dict) or any(not allowed_file(n) for n in names):
         raise ValueError('Unexpected file names')
     article = {'manifest.json': raw}
     article.update({name: regular(package / name) for name in names})
-    validate_article(article)
+    validate_article(article, collection)
     files = {name: article[name] for name in names}
     plan = json.loads(regular(package / 'plan.json').decode('utf-8'))
     version = digest(raw)
     directory = NAMESPACE + '/' + version
     before, after = regular(package / 'before.htaccess'), regular(package / 'after.htaccess')
-    reconstructed, routes, legacy = expected_routing(before, files, directory)
-    if (plan.get('version') != 1 or plan.get('kind') != 'production-routing-plan' or plan.get('target') != URL or
+    reconstructed, routes, legacy = expected_routing(before, files, directory, manifest)
+    if (plan.get('version') != 1 or plan.get('kind') != 'production-routing-plan' or plan.get('target') != manifest['target'] or
             plan.get('postId') != ARTICLE or plan.get('revision') != manifest['revision'] or plan.get('directory') != directory or
             plan.get('manifestSha256') != version or plan.get('routes') != routes or after != reconstructed or
             plan.get('beforeSha256') != digest(before) or plan.get('afterSha256') != digest(after)):

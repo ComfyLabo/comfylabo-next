@@ -16,11 +16,11 @@ const createReadableSlug = (value: string) =>
     .replace(/[&/_,.:;!?]+/g, " ")
     .replace(/[ー―‐‑‒–—―]+/g, "-")
     .replace(/\s+/g, "-")
-    .replace(/[^a-zA-Z0-9\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}-]/gu, "")
+    .replace(/[^a-zA-Z0-9-]/g, "")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
     .toLowerCase()
-    .slice(0, 96) || "post";
+    .slice(0, 96)
+    .replace(/^-|-$/g, "") || "post";
 
 const author = defineType({
   name: "author",
@@ -51,23 +51,34 @@ const post = defineType({
   type: "document",
   fields: [
     defineField({
+      name: "publicationSystem",
+      title: "公開システム",
+      type: "string",
+      initialValue: "comfylabo-next",
+      hidden: true,
+      readOnly: true,
+    }),
+    defineField({
       name: "title",
       title: "タイトル",
       type: "string",
-      description: "記事の見出しです。自動反映は現在、確認用の記事1本だけが対象です。",
+      description: "新しく作成した記事はPublishで本番の記事一覧と本文へ反映されます。確認用サイト next.comfylabo.com にも反映されます。",
       validation: (rule) => rule.required(),
     }),
     defineField({
       name: "slug",
       title: "URL識別名（slug）",
       type: "slug",
-      description: "確認用の記事では comfylabo-welcome のまま使ってください。変更すると自動反映の対象外になります。",
+      description: "半角小文字の英数字とハイフンで指定します（例：obsidian-file-settings）。自動生成後も内容を確認し、公開後は変更しないでください。日本語だけのタイトルでは post が生成されるため、記事ごとに識別名を付けてください。",
       options: {
         source: "title",
         maxLength: 96,
         slugify: createReadableSlug,
       },
-      validation: (rule) => rule.required(),
+      validation: (rule) => rule.required().custom((value) =>
+        !value?.current || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value.current)
+          ? true : "半角小文字の英数字をハイフンで区切って入力してください。",
+      ),
     }),
     defineField({
       name: "markdownBody",
@@ -80,7 +91,7 @@ const post = defineType({
       name: "publishedAt",
       title: "公開日時（任意）",
       type: "datetime",
-      description: "公開日時の記録です。日時を入力するだけで公開予約されることはありません。",
+      description: "記事一覧はこの日時の新しい順に並びます。日時を入力するだけで公開予約されることはありません。未来の日時でもPublishすると公開されます。",
     }),
     defineField({
       name: "seoDescription",
@@ -241,7 +252,7 @@ export default defineConfig({
     structureTool({
       title: "記事管理",
       structure: (S) => S.list().id("content").title("コンテンツ").items([
-        S.listItem().id("mvp-welcome").title("確認用の記事（MVP）").child(
+        S.listItem().id("mvp-welcome").title("ようこそ（動作確認用）").child(
           S.document().schemaType("post").documentId("comfylabo-mvp-welcome"),
         ),
         S.divider(),

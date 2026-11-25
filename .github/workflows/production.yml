@@ -1,4 +1,4 @@
-name: ComfyLabo production article 4484
+name: ComfyLabo production articles
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
       action:
         type: choice
         description: Build only, or publish the separately approved production article
-        options: [build, publish-production]
+        options: [build, build-collection, publish-production]
         default: build
 
 permissions:
@@ -42,16 +42,39 @@ jobs:
       - run: npm ci
       - run: npm run test:mvp
       - run: npm run test:pull
-      - name: Build the published Obsidian article only
+      - name: Build the approved production scope
         id: build
-        run: npm run article:production:build
+        shell: bash
+        env:
+          REQUESTED_ACTION: ${{ inputs.action || '' }}
+        run: |
+          SCOPE="$COMFYLABO_PRODUCTION_AUTO_DEPLOY"
+          if [ "$REQUESTED_ACTION" = build-collection ]; then SCOPE=new-articles; fi
+          case "$SCOPE" in
+            disabled|obsidian-4484)
+              npm run article:production:build
+              echo 'collection=false' >> "$GITHUB_OUTPUT"
+              ;;
+            new-articles)
+              npm run articles:production:build
+              echo 'collection=true' >> "$GITHUB_OUTPUT"
+              ;;
+            *) echo 'Invalid production scope' >&2; exit 1 ;;
+          esac
       - name: Package public content only
         env:
           RELEASE: ${{ steps.build.outputs.release }}
-        run: python3 -B scripts/production_bundle.py "$RELEASE" .mvp/production-bundle
+          COLLECTION: ${{ steps.build.outputs.collection }}
+        shell: bash
+        run: |
+          if [ "$COLLECTION" = true ]; then
+            python3 -B scripts/production_bundle.py "$RELEASE" .mvp/production-bundle --collection
+          else
+            python3 -B scripts/production_bundle.py "$RELEASE" .mvp/production-bundle
+          fi
       - name: Publish production bundle without SSH or Sanity write credentials
         if: >-
-          env.COMFYLABO_PRODUCTION_AUTO_DEPLOY == 'obsidian-4484' &&
+          (env.COMFYLABO_PRODUCTION_AUTO_DEPLOY == 'obsidian-4484' || env.COMFYLABO_PRODUCTION_AUTO_DEPLOY == 'new-articles') &&
           (github.event_name == 'repository_dispatch' || inputs.action == 'publish-production')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -60,12 +83,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! gh release view comfylabo-production-4484 >/dev/null 2>&1; then
-            gh release create comfylabo-production-4484 --target "$COMMIT" --prerelease --latest=false \
-              --title 'ComfyLabo production article 4484' --notes 'Published Obsidian article only; no server settings or drafts.'
+          if [ "$COMFYLABO_PRODUCTION_AUTO_DEPLOY" = new-articles ]; then
+            TAG=comfylabo-production-collection
+          else
+            TAG=comfylabo-production-4484
           fi
-          gh release upload comfylabo-production-4484 .mvp/production-bundle/comfylabo-production-4484.zip --clobber
-          gh release upload comfylabo-production-4484 .mvp/production-bundle/comfylabo-production-4484.sha256 --clobber
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$COMMIT" --prerelease --latest=false \
+              --title 'ComfyLabo production articles' --notes 'Approved published articles only; no server settings or drafts.'
+          fi
+          gh release upload "$TAG" ".mvp/production-bundle/$TAG.zip" --clobber
+          gh release upload "$TAG" ".mvp/production-bundle/$TAG.sha256" --clobber
       - name: Explain a failed production workflow
         if: failure()
         shell: bash
