@@ -1,8 +1,8 @@
 # Obsidian記事1本の本番自動反映
 
-2026-11-25時点：ローカル実装・検証済み、GitHubへの反映・Xserverへの導入・自動運用の有効化は未実施。既存の本番記事は初回配備した版を維持している。通常の「続けて」は本番自動配備の包括承認と解釈しない。
+2026-11-25時点：ユーザーの明示承認を得て、Obsidian記事1本の本番自動反映を有効化済み。GitHubでの生成・Release公開とXserver専用Cronの初回自然実行を確認し、現在の本番記事・素材・トップ／別記事が同じ内容を維持していることを照合した。承認範囲を別記事へ拡大しない。
 
-## 有効化の承認対象
+## 承認済みの運用範囲
 
 - 取得元：Sanity `0lwnb6yi / production` の公開済みpost。記事ID `6a6732df-f6d2-434e-9fca-7e745ad0b11a`、slug `4484` の1本だけ。
 - 配備先：既存URL `https://comfylabo.com/4484/` と記事専用の素材。トップ・他記事・旧Publisherは変更しない。確認用nextの自動反映も維持する。
@@ -46,7 +46,9 @@ COMFYLABO_PRODUCTION_APPROVED=obsidian-4484 /usr/bin/python3 -B \
 - 受信の専用ログは `automatic.log`。1ファイル64KiBまで、直前1ファイルを含め計128KiBまで保持する。正常な変更なしの確認ではログを増やさない。更新・復旧・エラーだけを記録し、原稿や認証情報は出力しない。
 - Sanityバックアップの「正常版7件／1GB」とは別の領域・設定。100MiB付近に達した際の旧版整理は、その時点で必要なものを確認して行う。
 
-## 承認後の導入順序
+## 実施した導入順序（再実行しない）
+
+以下は導入時の記録。受信処理とCronは既に設置済みで、初回用installerを再実行しない。
 
 1. 現在の本番設定が初回配備済みの記録と一致し、退避データが存在することを読み取り確認する。
 2. 検証済みソースを専用リポジトリ `ComfyLabo/comfylabo-next` へ反映する。既存のpreviewの挙動を維持し、本番用変数はまだ有効にしない。CIの生成・検証の成功を確認する。
@@ -55,7 +57,7 @@ COMFYLABO_PRODUCTION_APPROVED=obsidian-4484 /usr/bin/python3 -B \
 5. 導入処理は初期ZIPのmanifestが現在配備済みの `bc9be8f7a04aa98fca7403483d4b2645c02e108d09f0ccaf4e3a0f5a9f3863c1` と一致することを確認してから、本番専用Cronを1行だけ追加する。既存Cronは元のバイト列を保持し、変更前の全体を非公開領域の `automatic-cron.before` に退避する。現在と異なるZIPなら導入を止め、原因を確認する。
 6. 最初の受信が「内容変更なし」となり、記事・素材・トップ／別記事が変わらないことを確認する。実際のPublish通知による変更テストが必要な場合は、変更内容を別途提示してPublishの個別承認を求める。
 
-追加予定のCronは以下の1行。標準出力は保存せず、上記の上限付き専用ログを使う。
+追加済みのCronは以下の1行。標準出力は保存せず、上記の上限付き専用ログを使う。
 
 ```cron
 */2 * * * * COMFYLABO_PRODUCTION_AUTO_DEPLOY=obsidian-4484 /usr/bin/python3 -B /home/comfylabo/comfylabo-next-production/bin/production_pull.py >/dev/null 2>&1
@@ -67,4 +69,15 @@ COMFYLABO_PRODUCTION_APPROVED=obsidian-4484 /usr/bin/python3 -B \
 - 別記事／preview形式／壊れたZIP／余分な制御ファイル／パストラバーサル／重複名／シンボリックリンクを拒否。設定の競合・容量超過・状態保存失敗でも正常版を維持。同時実行をロックで抑止し、ログ保持数と容量も確認。
 - 実際の本番設定と実記事を使ったローカルApacheで、2回の自動更新、追加素材の200と次版での404、全ファイルのHTTPS照合、トップ／別記事の維持、手動復旧、公開後の検証失敗時復旧、同じ版の再適用防止を確認。証跡 `.mvp/evidence/production-auto-apache-check.json`。信頼する試験用証明書を使い、証明書検証は無効にしていない。
 - 初回実記事のパッケージから、公開ファイルだけのZIPを作成・再展開し検証。`.mvp/production-auto-bundle-check/` に保存、未公開。
-- 本番でのGitHub→受信処理の実行結果は、導入承認後に検証する。今回のローカル成功を本番自動運用の成功とは扱わない。
+- 本番でのGitHub→受信処理の初回実行も、下記の通り確認した。内容を変えるSanity Publishと本番切り替えの通し確認はまだ実施していないため、別途その変更内容の承認を得て行う。
+
+## 有効化の実績（2026-11-25）
+
+- ユーザー「自動反映を有効にしてよいです」の明示承認後に導入した。対象は4484だけで、Sanity文書の変更・Publish・削除は今回0件。
+- 実装コミット `9166bdf06f0b889ff612287acc2c4b807f7ee7d2` を専用リポジトリへ反映。GitHubでbuild-onlyのActions `45609044851`、本番Release生成の `45609316325` が成功した。既存previewのActions `45609044846` も成功。
+- GitHubの本番用変数を `obsidian-4484` として有効化。previewのAUTO_DEPLOY=true／PREVIEW_MODE=blogは維持した。
+- 初期ZIPのSHA-256は `a650f215099828089d7abece0306cb4db430168518e92f0af43ab0c03f30f001`。manifestは現在の本番と同じ `bc9be8f7a04aa98fca7403483d4b2645c02e108d09f0ccaf4e3a0f5a9f3863c1`。公開5ファイルとmanifestだけで、公開設定・計画を含まないことを確認。
+- Xserver専用binへ照合済みの3ファイルを導入し、元のcrontab全体を非公開退避して本番専用Cronを1行追加。既存Cronのバイト列維持を確認した。
+- 手動で受信処理を起動せず、Cronの自然実行によって上記ZIPの処理記録が生成されたことを確認。現在版は初回配備のまま、直前の自動配備版はまだない。エラーログなし。専用領域の使用量1,862,052バイト（この確認時点）。
+- 公開5ファイルのHTTPSハッシュ、トップと `/1125/` の配備前HTMLハッシュ、301転送と内部パス404が正常。親設定SHA-256は初回配備後の `0a6d2b2ad11bb417cd1080083ab8f6b952727ea31132f99686ac01f82350601c` を維持。
+- 証跡はGit対象外 `.mvp/evidence/production-auto-installed.json`、`production-auto-after.json`、`production-auto-release.json`、`production-http-after.json`。GitHub成功画面は `production-auto-github-success.jpg`。

@@ -104,7 +104,7 @@ COMFYLABO_PRODUCTION_APPROVED=obsidian-4484 npm run article:production:rollback 
 
 ## 自動公開の本番対応
 
-現在の自動公開先は確認用サイトだけである。本番へもPublishから自動反映するには、対象記事の選別、本番候補の検証・受信・切り替え・HTTPS照合・復旧を本番向けに整え、承認範囲を明示して有効化する必要がある。初回の手動配備だけで本番自動公開まで完成したと扱わない。
+2026-11-25、その後の明示承認を得て、本記事1本に限る本番自動反映を有効化した。現在の内容と同じ初期ZIPをGitHubで生成し、Xserver専用Cronによる初回の自然受信、現在版の維持、実サイト照合まで確認済み。詳細は `production-autopublish.md`。内容を変えるSanity Publishから切り替えまでの通しテストは、変更内容の個別承認後に行う。別記事への本番自動反映は対象外。
 
 Search Consoleのnext登録は本番への切り替えとは別。確認用サイトの検索除外解除や、本番記事へのインデックス登録リクエストは、この準備作業では行わない。
 
@@ -117,4 +117,4 @@ Search Consoleのnext登録は本番への切り替えとは別。確認用サ�
 - 実画面1280pxで横はみ出しなし、ロゴと本文画像2枚の読み込み成功、表5行、既存canonicalを確認。画面証跡 `.mvp/evidence/production-live-4484.jpg`。
 - 公開領域外の `comfylabo-next-production/backups/<manifest SHA-256>/` に元設定と元記事HTMLを保存済み。元記事の実ファイルも同じハッシュのまま残し、設定0644／退避0600／専用親0700を読み取り照合した。実本番で元へ戻す操作は、成功した配備を維持するため行っていない。
 - 証跡 `.mvp/evidence/production-deploy-preflight.json`、`production-http-before.json`、`production-http-after.json`、`production-deploy-complete.json`。確認用postflightでサーバーの既定ASCIIにより一度読み取りエラーになったため、UTF-8明示後に全項目を再確認し成功。配備処理そのものは成功していた。
-- 旧Publisher・他記事・nextの自動配備設定は変更していない。通常Publishからの本番自動反映は今後の作業であり、今回の初回配備では有効化していない。
+- 旧Publisher・他記事・nextの自動配備設定は変更していない。初回配備の時点では通常Publishからの本番自動反映を有効化していなかった。その後、別途承認を受けて本記事限定で有効化済み。詳細は `production-autopublish.md`。
